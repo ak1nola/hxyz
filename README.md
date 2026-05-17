@@ -1,6 +1,6 @@
 # HXZY - Helix + Zellij + Yazi Integration
 
-A powerful file picker integration that brings seamless file selection to Helix through Yazi and Zellij terminal multiplexing.
+A powerful simple picker integration that brings seamless file selection to Helix through Yazi and Zellij terminal multiplexing.
 
 ## What is HXZY?
 
@@ -13,7 +13,7 @@ It provides a convenient file picker directly accessible from within Helix via a
 
 ## Features
 
-- **Quick File Picker**: Toggle a file picker pane with `space + q + f` in Helix
+- **Quick File Picker**: Toggle a file picker pane with `space + m + f` in Helix
 - **Seamless Navigation**: Browse files in Yazi and open selections directly in Helix
 - **Session Management**: Auto-creates named Zellij sessions for organization
 - **Configuration Support**: Includes optimized Yazi configuration
@@ -72,7 +72,7 @@ If you prefer to install manually:
 
 3. Add the keybinding to your Helix config (`~/.config/helix/config.toml`):
    ```toml
-   [keys.normal.space.q]
+   [keys.normal.space.m]
    f = ':sh hxyz toggle "%{buffer_name}"'
    ```
 
@@ -83,7 +83,7 @@ If you prefer to install manually:
 While editing in Helix:
 
 1. Press `space` (space leader key)
-2. Press `q` (group key)
+2. Press `m` (group key)
 3. Press `f` (file picker key)
 
 This toggles a file picker pane on the left. You can then:
@@ -111,7 +111,7 @@ hxzy --help
 
 ### The File Picker Flow
 
-1. **Toggle Picker**: Press `space q f` in Helix to toggle the picker pane
+1. **Toggle Picker**: Press `space m f` in Helix to toggle the picker pane
 2. **Browse Files**: Use Yazi to navigate the file system
 3. **Select & Open**: Choose files to open in Helix
 4. **Auto-focus**: Helix pane automatically receives focus when you select files
@@ -155,7 +155,7 @@ hxyz -s custom-session-name
 If you want to customize the keybindings, edit `~/.config/helix/config.toml`:
 
 ```toml
-[keys.normal.space.q]
+[keys.normal.space.m]
 f = ':sh hxyz toggle "%{buffer_name}"'  # Current binding
 
 # You can also add custom variations:
@@ -192,7 +192,7 @@ rm ~/.local/bin/hxzy
 python3 install.py
 ```
 
-### "space q f already exists" error
+### "space m f already exists" error
 
 **Problem**: The keybinding is already present in Helix config
 
@@ -224,7 +224,7 @@ rm ~/.local/bin/hxzy
 rm -rf ~/.config/xyz
 
 # Remove the keybinding from ~/.config/helix/config.toml
-# (Edit the file and remove the [keys.normal.space.q] section)
+# (Edit the file and remove the [keys.normal.space.m] section)
 ```
 
 ## Performance Tips
