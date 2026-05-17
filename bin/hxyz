@@ -1,0 +1,296 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+script_path="$0"
+hxyz_home="${HXYZ_HOME:-$HOME/.config/hxyz}"
+
+usage() {
+  cat <<'EOF'
+Usage: hxyz [-s <session-prefix>] <command> [args]
+
+Options:
+  -s <prefix>           Session name prefix (default: current directory name).
+
+Commands:
+  toggle [path]         Toggle a left-side Yazi pane in the current Zellij tab.
+  picker <pane> <cwd>   Internal command used inside the picker pane.
+  edit <pane> <path>... Internal command used by Yazi to open selections in Helix.
+EOF
+}
+
+fail() {
+  echo "Error: $*" >&2
+  exit 1
+}
+
+resolve_cwd() {
+  local target="${1:-}"
+
+  if [[ -z "$target" ]]; then
+    pwd
+    return
+  fi
+
+  if [[ -d "$target" ]]; then
+    cd -- "$target" && pwd
+    return
+  fi
+
+  if [[ -f "$target" ]]; then
+    cd -- "$(dirname -- "$target")" && pwd
+    return
+  fi
+
+  pwd
+}
+
+current_tab_id() {
+  local pane_id="${ZELLIJ_PANE_ID:-}"
+  [[ -n "$pane_id" ]] || fail "ZELLIJ_PANE_ID is not set"
+  zellij action list-panes --json | python3 -c '
+import json, sys
+pane_id = int(sys.argv[1])
+for pane in json.load(sys.stdin):
+    if pane.get("id") == pane_id:
+        print(pane["tab_id"])
+        raise SystemExit(0)
+raise SystemExit(1)
+' "$pane_id"
+}
+
+session_main_pane_id() {
+  local session_name="$1"
+
+  zellij -s "$session_name" action list-panes --json --all | python3 -c '
+import json
+import sys
+
+last_pane_id = None
+for pane in json.load(sys.stdin):
+  if pane.get("is_plugin"):
+    continue
+  if pane.get("is_floating"):
+    continue
+  last_pane_id = pane.get("id")
+
+if last_pane_id is None:
+  raise SystemExit(1)
+
+print(f"terminal_{last_pane_id}")
+'
+}
+
+write_to_helix() {
+  local pane_id="$1"
+  shift
+  local command_text="$*"
+
+  zellij action focus-pane-id "$pane_id"
+  zellij action write --pane-id "$pane_id" 27
+  zellij action write-chars --pane-id "$pane_id" ":$command_text"
+  zellij action write --pane-id "$pane_id" 13
+}
+
+write_to_session_pane() {
+  local session_name="$1"
+  local pane_id="$2"
+  shift 2
+  local command_text="$*"
+
+  zellij action rename-pane "hx"
+
+  zellij -s "$session_name" action focus-pane-id "$pane_id"
+  zellij -s "$session_name" action write --pane-id "$pane_id" 27
+  zellij -s "$session_name" action write-chars --pane-id "$pane_id" "$command_text"
+  zellij -s "$session_name" action write --pane-id "$pane_id" 13
+}
+
+resize_picker_width() {
+  local pane_id="$1"
+  local total_width
+  total_width="$(tput cols 2>/dev/null || printf '0')"
+
+  [[ "$total_width" =~ ^[0-9]+$ ]] || return 0
+  (( total_width > 0 )) || return 0
+
+  #local target_width=$(( total_width * 40 / 100 ))
+  #local current_width=$(( total_width / 2 ))
+  #local shrink_steps=$(( current_width - target_width ))
+  #local step
+
+  #(( shrink_steps > 0 )) || return 0
+  local shrink_steps=5
+
+  for (( step = 0; step < shrink_steps; step++ )); do
+    zellij action resize --pane-id "$pane_id" decrease right >/dev/null
+  done
+}
+
+toggle_picker() {
+  [[ -n "${ZELLIJ:-}" ]] || fail "toggle must be run inside Zellij"
+  [[ -n "${ZELLIJ_PANE_ID:-}" ]] || fail "ZELLIJ_PANE_ID is not set"
+
+  local origin_pane="terminal_${ZELLIJ_PANE_ID}"
+  local cwd
+  cwd="$(resolve_cwd "${1:-}")"
+
+  local tab_id
+  tab_id="$(current_tab_id)"
+
+  # Find the first non-origin pane in this tab (typically the leftmost extra pane)
+  local other_pane_id=""
+  other_pane_id="$(zellij action list-panes --json --all | python3 -c '
+import json, sys
+
+origin_id = int(sys.argv[1].split("_")[1])
+tab_id = int(sys.argv[2])
+
+for pane in json.load(sys.stdin):
+    if pane.get("tab_id") != tab_id:
+        continue
+    if pane.get("id") == origin_id:
+        continue
+    if pane.get("is_plugin"):
+        continue
+    
+    print("terminal_{}".format(pane["id"]))
+    raise SystemExit(0)
+
+raise SystemExit(1)
+' "$origin_pane" "$tab_id" 2>/dev/null || true)"
+
+  if [[ -n "$other_pane_id" ]]; then
+    # Close the existing pane
+    zellij action close-pane --pane-id "$other_pane_id"
+    zellij action focus-pane-id "$origin_pane"
+    return
+  fi
+
+  # Create new picker pane
+  local picker_id
+  picker_id="$(zellij action new-pane \
+    --tab-id "$tab_id" \
+    --direction right \
+    --width 20% \
+    --cwd "$cwd" \
+    --name picker \
+    -- "$script_path" picker "$origin_pane" "$cwd")"
+
+  zellij action move-pane --pane-id "$picker_id" left
+  resize_picker_width "$picker_id"
+  zellij action focus-pane-id "$picker_id"
+}
+
+run_picker() {
+  local origin_pane="$1"
+  local cwd="$2"
+  local editor_cmd
+  editor_cmd="$script_path edit $origin_pane"
+
+  export EDITOR="$editor_cmd"
+
+  if [[ "${HXYZ_USE_YAZI_CONFIG:-}" != "false" ]]; then
+    export YAZI_CONFIG_HOME="${HXYZ_USE_YAZI_CONFIG:-${hxyz_home}/yazi}"
+  fi
+
+  cd -- "$cwd"
+  exec yazi "$cwd"
+}
+
+edit_from_picker() {
+  local origin_pane="$1"
+  shift
+  local paths=("$@")
+  local escaped_paths=()
+  local path
+
+  [[ ${#paths[@]} -gt 0 ]] || exit 0
+
+  for path in "${paths[@]}"; do
+    escaped_paths+=("$(printf '%q' "$path")")
+  done
+
+  if [[ ${#escaped_paths[@]} -eq 1 && ! -f "${paths[0]}" ]]; then
+    write_to_helix "$origin_pane" "cd ${escaped_paths[0]}"
+    exit 0
+  fi
+
+  write_to_helix "$origin_pane" "open ${escaped_paths[*]}"
+}
+
+main() {
+  local session_prefix=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -s)
+        shift
+        [[ $# -gt 0 ]] || fail "-s requires a session name prefix"
+        session_prefix="$1"
+        shift
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+
+  local command="${1:-}"
+
+  case "$command" in
+    toggle)
+      shift
+      toggle_picker "${1:-}"
+      ;;
+    picker)
+      shift
+      [[ $# -eq 2 ]] || fail "picker requires <origin-pane> <cwd>"
+      run_picker "$1" "$2"
+      ;;
+    edit)
+      shift
+      [[ $# -ge 2 ]] || fail "edit requires <origin-pane> <path>..."
+      edit_from_picker "$@"
+      ;;
+    -h|--help|help)
+      usage
+      ;;
+    "")
+      # No command passed: start Zellij with Helix if not already running
+      if [[ -z "${ZELLIJ:-}" ]]; then
+        local session_name="${session_prefix:-hxyz}-$$"
+        local origin_pane
+        zellij attach --create-background "$session_name"
+        local waited=0
+        until zellij list-sessions | grep -q "$session_name"; do
+          sleep 0.1
+          waited=$((waited + 1))
+          if (( waited > 50 )); then
+            fail "zellij session $session_name not created in 5 seconds"
+          fi
+        done
+        origin_pane="$(session_main_pane_id "$session_name")"
+        write_to_session_pane "$session_name" "$origin_pane" " hx"
+        #zellij --session "$session_name" run -- hx
+        #toggle_picker "$PWD"
+        zellij attach "$session_name"
+      else
+        # Try 'hx' first, then fall back to 'helix'
+        if command -v hx &> /dev/null; then
+          hx
+        elif command -v helix &> /dev/null; then
+          helix
+        else
+          fail "helix not found. Please install helix or hx"
+        fi
+      fi
+      ;;
+    *)
+      usage >&2
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"
