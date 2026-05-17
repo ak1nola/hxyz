@@ -1,10 +1,10 @@
-# HXZY - Helix + Zellij + Yazi Integration
+# HXYZ - Helix + Zellij + Yazi Integration
 
 A powerful simple picker integration that brings seamless file selection to Helix through Yazi and Zellij terminal multiplexing.
 
-## What is HXZY?
+## What is HXYZ?
 
-HXZY is a shell script that integrates three powerful terminal tools:
+HXYZ is a shell script that integrates three powerful terminal tools:
 - **Helix** - A modern text editor
 - **Zellij** - A terminal multiplexer (like tmux)
 - **Yazi** - A blazing fast file manager
@@ -21,7 +21,7 @@ It provides a convenient file picker directly accessible from within Helix via a
 
 ## Requirements
 
-Before installing HXZY, ensure you have the following installed:
+Before installing HXYZ, ensure you have the following installed:
 
 - **Zellij** - Terminal multiplexer
 - **Yazi** - File manager
@@ -31,6 +31,8 @@ Before installing HXZY, ensure you have the following installed:
 ## Installation
 
 ### Using the Install Script
+
+Note: the install script also creates a 'hz' symlink so that after installation you can open zellij + hx with either `hz` or `hxyz`
 
 1. Navigate to the HXYZ directory:
    ```bash
@@ -94,17 +96,17 @@ This toggles a file picker pane on the left. You can then:
 
 ### Using the Command
 
-You can also run HXZY directly from the terminal:
+You can also run HXYZ directly from the terminal:
 
 ```bash
-# Start HXZY in current directory
-hxzy
+# Start HXYZ in current directory
+hxyz
 
 # Start with custom session name prefix
-hxzy -s myproject
+hxyz -s myproject
 
 # Show usage information
-hxzy --help
+hxyz --help
 ```
 
 ## How It Works
@@ -122,22 +124,22 @@ HXYZ creates Zellij sessions with auto-generated names:
 - Default format: `hxyz-{process-id}`
 - Custom prefix: `hxyz -s myproject` creates `myproject-{process-id}`
 
-This allows multiple independent HXZY sessions without conflicts.
+This allows multiple independent HXYZ sessions without conflicts.
 
 ## Configuration
 
 ### Yazi Configuration
 
-The HXZY installation includes an optimized `yazi.toml` configuration file at:
+The HXYZ installation includes an optimized `yazi.toml` configuration file at:
 ```
 ~/.config/xyz/yazi.toml
 ```
 
-This configuration is tailored for use with HXZY and Helix integration. You can customize it further if needed.
+This configuration is tailored for use with HXYZ and Helix integration. You can customize it further if needed.
 
 ### Environment Variables
 
-You can customize HXZY behavior with environment variables:
+You can customize HXYZ behavior with environment variables:
 
 ```bash
 # Set custom Yazi configuration directory
@@ -182,13 +184,13 @@ To skip dependency checking (if tools are installed in non-standard locations):
 python3 install.py --no-dep-check
 ```
 
-### "hxzy already exists" error
+### "hxyz already exists" error
 
-**Problem**: HXZY installation detects an existing hxzy at `~/.local/bin/hxzy`
+**Problem**: HXYZ installation detects an existing hxyz at `~/.local/bin/hxyz`
 
 **Solution**: Either remove the existing file or verify it's the version you want:
 ```bash
-rm ~/.local/bin/hxzy
+rm ~/.local/bin/hxyz
 python3 install.py
 ```
 
@@ -214,11 +216,11 @@ python3 install.py
 
 ## Uninstalling
 
-HXZY installation is unintrusive, so uninstalling is simple:
+HXYZ installation is unintrusive, so uninstalling is simple:
 
 ```bash
 # Remove the hxyz script
-rm ~/.local/bin/hxzy
+rm ~/.local/bin/hxyz
 
 # Remove yazi configuration
 rm -rf ~/.config/xyz
@@ -244,7 +246,7 @@ rm -rf ~/.config/xyz
 ### File Structure
 
 ```
-~/.local/bin/hxzy              # Executable script
+~/.local/bin/hxyz              # Executable script
 ~/.config/helix/config.toml    # Helix config with keybinding (modified during install)
 ~/.config/xyz/
 ├── yazi.toml                  # Yazi configuration
@@ -254,7 +256,7 @@ rm -rf ~/.config/xyz
 
 ### Session Layout
 
-When you toggle the picker, HXZY creates:
+When you toggle the picker, HXYZ creates:
 ```
 Zellij Session
 ├── Main Pane (Helix)
@@ -279,18 +281,18 @@ Key functions:
 
 ### Contributing
 
-To improve HXZY:
-1. Edit `bin/hxzy`
-2. Test with `hxzy toggle`
+To improve HXYZ:
+1. Edit `bin/hxyz`
+2. Test with `hxyz toggle`
 3. Report issues or suggest improvements
 
 ## License
 
-HXZY is provided as-is. Use at your own risk.
+HXYZ is provided as-is. Use at your own risk.
 
 ## Credits
 
-HXZY integrates:
+HXYZ integrates:
 - **Zellij** - Terminal multiplexer (https://zellij.dev)
 - **Yazi** - File manager (https://yazi.rs)
 - **Helix** - Text editor (https://helix-editor.com)
