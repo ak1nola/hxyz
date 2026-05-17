@@ -1,0 +1,2 @@
+[keys.normal.space.m]
+f = ':sh hxyz toggle "%{buffer_name}"' # Toggle the left Yazi pane and open selections in the Helix pane
