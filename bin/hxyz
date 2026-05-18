@@ -7,10 +7,10 @@ hxyz_home="${HXYZ_HOME:-$HOME/.config/hxyz}"
 
 usage() {
   cat <<'EOF'
-Usage: hxyz [-s <session-prefix>] <command> [args]
+Usage: hxyz [-s <session-name>] <command> [args]
 
 Options:
-  -s <prefix>           Session name prefix (default: current directory name).
+  -s <name>             Session name (default: hxyz-$pid).
 
 Commands:
   toggle [path]         Toggle a left-side Yazi pane in the current Zellij tab.
@@ -190,8 +190,8 @@ run_picker() {
 
   export EDITOR="$editor_cmd"
 
-  if [[ "${HXYZ_USE_YAZI_CONFIG:-}" != "false" ]]; then
-    export YAZI_CONFIG_HOME="${HXYZ_USE_YAZI_CONFIG:-${hxyz_home}/yazi}"
+  if [[ "${HXYZ_USE_YAZI_CONFIG:-true}" != "false" ]]; then
+    export YAZI_CONFIG_HOME="${hxyz_home}"
   fi
 
   cd -- "$cwd"
@@ -220,14 +220,14 @@ edit_from_picker() {
 }
 
 main() {
-  local session_prefix=""
+  local session_name_arg=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -s)
         shift
-        [[ $# -gt 0 ]] || fail "-s requires a session name prefix"
-        session_prefix="$1"
+        [[ $# -gt 0 ]] || fail "-s requires a session name"
+        session_name_arg="$1"
         shift
         ;;
       *)
@@ -259,7 +259,7 @@ main() {
     "")
       # No command passed: start Zellij with Helix if not already running
       if [[ -z "${ZELLIJ:-}" ]]; then
-        local session_name="${session_prefix:-hxyz}-$$"
+        local session_name="${session_name_arg:-hxyz-$$}"
         local origin_pane
         zellij attach --create-background "$session_name"
         local waited=0

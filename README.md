@@ -2,6 +2,8 @@
 
 A powerful simple picker integration that brings seamless file selection to Helix through Yazi and Zellij terminal multiplexing.
 
+It is based on [zide](https://github.com/josephschmitt/zide) - but, hopefully, a little more lightweight and simpler.
+
 ## What is HXYZ?
 
 HXYZ is a shell script that integrates three powerful terminal tools:
@@ -19,6 +21,10 @@ It provides a convenient file picker directly accessible from within Helix via a
 - **Configuration Support**: Includes optimized Yazi configuration
 - **Non-Destructive Install**: Safe installation with conflict detection
 
+## Nota Bene
+
+The file picker pane toggle is naive. `space m f` simply closes the leftmost zellij panel if there's one open (regardless of what that panel is running) or opens a new left panel with yazi running and pointing to the current working directory
+
 ## Requirements
 
 Before installing HXYZ, ensure you have the following installed:
@@ -32,11 +38,11 @@ Before installing HXYZ, ensure you have the following installed:
 
 ### Using the Install Script
 
-Note: the install script also creates a 'hz' symlink so that after installation you can open zellij + hx with either `hz` or `hxyz`
+Note: the install script also creates a 'hz' symlink so that after installation you can open zellij + helix with either `hz` or `hxyz`
 
 1. Navigate to the HXYZ directory:
    ```bash
-   cd ~/Projects/hxyz
+   cd ./hxyz
    ```
 
 2. Run the install script:
@@ -68,8 +74,8 @@ If you prefer to install manually:
 
 2. Copy the yazi configuration:
    ```bash
-   mkdir -p ~/.config/xyz
-   cp yazi.toml ~/.config/xyz/yazi.toml
+   mkdir -p ~/.config/hxyz
+   cp config/yazi.toml ~/.config/hxyz/yazi.toml
    ```
 
 3. Add the keybinding to your Helix config (`~/.config/helix/config.toml`):
@@ -82,7 +88,7 @@ If you prefer to install manually:
 
 ### Using the Keybinding
 
-While editing in Helix:
+While editing in Helix (running within zellij):
 
 1. Press `space` (space leader key)
 2. Press `m` (group key)
@@ -102,7 +108,7 @@ You can also run HXYZ directly from the terminal:
 # Start HXYZ in current directory
 hxyz
 
-# Start with custom session name prefix
+# Start with custom session name
 hxyz -s myproject
 
 # Show usage information
@@ -120,9 +126,9 @@ hxyz --help
 
 ### Session Management
 
-HXYZ creates Zellij sessions with auto-generated names:
+HXYZ creates Zellij sessions with auto-generated names or custom names:
 - Default format: `hxyz-{process-id}`
-- Custom prefix: `hxyz -s myproject` creates `myproject-{process-id}`
+- Custom name: `hxyz -s myproject` creates a session named exactly `myproject`
 
 This allows multiple independent HXYZ sessions without conflicts.
 
