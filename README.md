@@ -15,7 +15,7 @@ It provides a convenient file picker directly accessible from within Helix via a
 
 ## Features
 
-- **Quick File Picker**: Toggle a file picker pane with `space + m + f` in Helix
+- **Quick File Picker**: Toggle a file picker pane with `space + m + f` in Helix (`hxyz picker`)
 - **Seamless Navigation**: Browse files in Yazi and open selections directly in Helix
 - **Session Management**: Auto-creates named Zellij sessions for organization
 - **Configuration Support**: Includes optimized Yazi configuration
@@ -23,7 +23,7 @@ It provides a convenient file picker directly accessible from within Helix via a
 
 ## Nota Bene
 
-The file picker pane toggle is naive. `space m f` simply closes the leftmost zellij panel if there's one open (regardless of what that panel is running) or opens a new left panel with yazi running and pointing to the current working directory
+The file picker command (`hxyz picker`) toggles a pane titled `picker` in the current Zellij tab. If the pane exists it is closed, otherwise a new left-side Yazi pane is created for the current working directory.
 
 ## Requirements
 
@@ -81,7 +81,8 @@ If you prefer to install manually:
 3. Add the keybinding to your Helix config (`~/.config/helix/config.toml`):
    ```toml
    [keys.normal.space.m]
-   f = ':sh hxyz toggle "%{buffer_name}"'
+   f = ':sh hxyz picker "%{buffer_name}"'
+   g = ':sh hxyz git'
    ```
 
 ## Usage
@@ -119,7 +120,7 @@ hxyz --help
 
 ### The File Picker Flow
 
-1. **Toggle Picker**: Press `space m f` in Helix to toggle the picker pane
+1. **Toggle Picker**: Press `space m f` in Helix (runs `hxyz picker "%{buffer_name}"`)
 2. **Browse Files**: Use Yazi to navigate the file system
 3. **Select & Open**: Choose files to open in Helix
 4. **Auto-focus**: Helix pane automatically receives focus when you select files
@@ -138,7 +139,7 @@ This allows multiple independent HXYZ sessions without conflicts.
 
 The HXYZ installation includes an optimized `yazi.toml` configuration file at:
 ```
-~/.config/xyz/yazi.toml
+~/.config/hxyz/yazi.toml
 ```
 
 This configuration is tailored for use with HXYZ and Helix integration. You can customize it further if needed.
@@ -164,11 +165,12 @@ If you want to customize the keybindings, edit `~/.config/helix/config.toml`:
 
 ```toml
 [keys.normal.space.m]
-f = ':sh hxyz toggle "%{buffer_name}"'  # Current binding
+f = ':sh hxyz picker "%{buffer_name}"'  # Current binding
+g = ':sh hxyz git'                       # Lazygit popup
 
 # You can also add custom variations:
-# q = ':sh hxyz toggle'                # Open without current file context
-# v = ':sh hxyz -s vsplit toggle'     # Future: split variation
+# q = ':sh hxyz picker'               # Open without current file context
+# v = ':sh hxyz -s vsplit picker'     # Future: split variation
 ```
 
 ## Troubleshooting
@@ -222,18 +224,17 @@ python3 install.py
 
 ## Uninstalling
 
-HXYZ installation is unintrusive, so uninstalling is simple:
+** Use the uninstall mode in the install script **
 
 ```bash
-# Remove the hxyz script
-rm ~/.local/bin/hxyz
-
-# Remove yazi configuration
-rm -rf ~/.config/xyz
-
-# Remove the keybinding from ~/.config/helix/config.toml
-# (Edit the file and remove the [keys.normal.space.m] section)
+python3 install.py uninstall
 ```
+
+This removes the following (i.e. you can uninstall manually this way):
+- `~/.local/bin/hxyz`
+- `~/.local/bin/hz`
+- `~/.config/hxyz`
+- The HXYZ keys added under `[keys.normal.space.m]` in `~/.config/helix/config.toml`
 
 ## Performance Tips
 
@@ -254,7 +255,7 @@ rm -rf ~/.config/xyz
 ```
 ~/.local/bin/hxyz              # Executable script
 ~/.config/helix/config.toml    # Helix config with keybinding (modified during install)
-~/.config/xyz/
+~/.config/hxyz/
 ├── yazi.toml                  # Yazi configuration
 └── plugins/
     └── auto-layout.yazi       # Auto-layout plugin for Yazi
@@ -262,7 +263,7 @@ rm -rf ~/.config/xyz
 
 ### Session Layout
 
-When you toggle the picker, HXYZ creates:
+When you run `hxyz picker`, HXYZ creates:
 ```
 Zellij Session
 ├── Main Pane (Helix)
@@ -275,21 +276,21 @@ Files selected in Yazi are automatically opened in the Helix pane.
 
 ### Modifying the Script
 
-The hxyz script is written in bash and uses:
+The HXYZ scripts are written in bash and use:
 - Zellij CLI for pane management
-- Python 3 for JSON parsing
+- `jq` for JSON parsing
 - Yazi for file browsing
 
-Key functions:
-- `toggle_picker()` - Opens/closes the picker pane
-- `run_picker()` - Runs Yazi with proper configuration
-- `edit_from_picker()` - Opens selected files in Helix
+Key script responsibilities:
+- `bin/hxyz` - Main command dispatcher (`picker`, `git`, `vibe`, and internal `loadbuffer`)
+- `bin/hxyz-picker` - Opens/closes the picker pane in the current Zellij tab
+- `bin/hxyz-buffer` - Runs Yazi and handles picker callbacks that open files in Helix
 
 ### Contributing
 
 To improve HXYZ:
 1. Edit `bin/hxyz`
-2. Test with `hxyz toggle`
+2. Test with `hxyz picker`
 3. Report issues or suggest improvements
 
 ## License
