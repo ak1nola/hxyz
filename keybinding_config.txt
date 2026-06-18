@@ -1,2 +1,4 @@
-[keys.normal.space.m]
-f = ':sh hxyz toggle "%{buffer_name}"' # Toggle the left Yazi pane and open selections in the Helix pane
+[keys.normal.m]
+f = ':sh hxyz picker "%{buffer_name}"' # Toggle the left Yazi pane and open selections in the Helix pane
+g = ':sh hxyz git'
+o = ':sh hxyz vibe "%{buffer_name}" %{cursor_line}' # Toggle Copilot CLI in a floating pane

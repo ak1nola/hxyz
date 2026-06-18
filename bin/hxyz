@@ -5,6 +5,9 @@ set -euo pipefail
 script_path="$0"
 hxyz_home="${HXYZ_HOME:-$HOME/.config/hxyz}"
 
+# Uncomment to enable debug logging: tail -f /tmp/hxyz.log
+# exec 2>>/tmp/hxyz.log; set -x
+
 usage() {
   cat <<'EOF'
 Usage: hxyz [-s <session-name>] <command> [args]
@@ -13,9 +16,12 @@ Options:
   -s <name>             Session name (default: hxyz-$pid).
 
 Commands:
-  toggle [path]         Toggle a left-side Yazi pane in the current Zellij tab.
-  picker <pane> <cwd>   Internal command used inside the picker pane.
-  edit <pane> <path>... Internal command used by Yazi to open selections in Helix.
+  picker [path]         Toggle a left-side Yazi pane in the current Zellij tab.
+  git                   Open LazyGit in a centered floating Zellij pane.
+  vibe [file] [line]    Open Copilot CLI in a floating pane named 'vibe'.
+  buffer <pane> <cwd>   Internal: launch Yazi inside the picker pane.
+  buffer edit <pane> <path>...
+                        Internal: open Yazi selections in Helix.
 EOF
 }
 
@@ -24,6 +30,10 @@ fail() {
   exit 1
 }
 
+########################################## PICKER ##########################################
+
+# Resolves the working directory from an optional path argument.
+# If a file is given, returns its parent directory. Falls back to $PWD.
 resolve_cwd() {
   local target="${1:-}"
 
@@ -45,67 +55,25 @@ resolve_cwd() {
   pwd
 }
 
+# Returns the Zellij tab_id of the pane this script is running in.
 current_tab_id() {
   local pane_id="${ZELLIJ_PANE_ID:-}"
   [[ -n "$pane_id" ]] || fail "ZELLIJ_PANE_ID is not set"
-  zellij action list-panes --json | python3 -c '
-import json, sys
-pane_id = int(sys.argv[1])
-for pane in json.load(sys.stdin):
-    if pane.get("id") == pane_id:
-        print(pane["tab_id"])
-        raise SystemExit(0)
-raise SystemExit(1)
-' "$pane_id"
+  zellij action list-panes --json | jq --argjson id "$pane_id" '.[] | select(.id == $id) | .tab_id'
 }
 
-session_main_pane_id() {
-  local session_name="$1"
+focus_pane_if_needed() {
+  local pane_id="${1#terminal_}"
+  local focused_id
+  focused_id="$(zellij action list-panes --json --all \
+    | jq -r 'first(.[] | select(.is_focused == true) | .id | tostring) // empty')"
 
-  zellij -s "$session_name" action list-panes --json --all | python3 -c '
-import json
-import sys
-
-last_pane_id = None
-for pane in json.load(sys.stdin):
-  if pane.get("is_plugin"):
-    continue
-  if pane.get("is_floating"):
-    continue
-  last_pane_id = pane.get("id")
-
-if last_pane_id is None:
-  raise SystemExit(1)
-
-print(f"terminal_{last_pane_id}")
-'
+  [[ "$focused_id" == "$pane_id" ]] || zellij action focus-pane-id "terminal_${pane_id}"
 }
 
-write_to_helix() {
-  local pane_id="$1"
-  shift
-  local command_text="$*"
-
-  zellij action focus-pane-id "$pane_id"
-  zellij action write --pane-id "$pane_id" 27
-  zellij action write-chars --pane-id "$pane_id" ":$command_text"
-  zellij action write --pane-id "$pane_id" 13
-}
-
-write_to_session_pane() {
-  local session_name="$1"
-  local pane_id="$2"
-  shift 2
-  local command_text="$*"
-
-  zellij action rename-pane "hx"
-
-  zellij -s "$session_name" action focus-pane-id "$pane_id"
-  zellij -s "$session_name" action write --pane-id "$pane_id" 27
-  zellij -s "$session_name" action write-chars --pane-id "$pane_id" "$command_text"
-  zellij -s "$session_name" action write --pane-id "$pane_id" 13
-}
-
+# Shrinks the picker pane width by issuing a fixed number of resize-decrease
+# steps. The commented-out block below shows a proportional approach that was
+# abandoned because zellij doesn't expose current pane pixel/cell dimensions.
 resize_picker_width() {
   local pane_id="$1"
   local total_width
@@ -127,8 +95,12 @@ resize_picker_width() {
   done
 }
 
+# Toggles a Yazi file-picker pane on the left side of the current Zellij tab.
+# If a picker pane already exists it is closed (and the main pane is renamed
+# 'editor' if it's the only one left). Otherwise a new picker pane is opened,
+# moved to the left, and focused.
 toggle_picker() {
-  [[ -n "${ZELLIJ:-}" ]] || fail "toggle must be run inside Zellij"
+  [[ -n "${ZELLIJ:-}" ]] || fail "picker must be run inside Zellij"
   [[ -n "${ZELLIJ_PANE_ID:-}" ]] || fail "ZELLIJ_PANE_ID is not set"
 
   local origin_pane="terminal_${ZELLIJ_PANE_ID}"
@@ -138,57 +110,72 @@ toggle_picker() {
   local tab_id
   tab_id="$(current_tab_id)"
 
-  # Find the first non-origin pane in this tab (typically the leftmost extra pane)
+  # Find the picker pane (title == "picker") in this tab
   local other_pane_id=""
-  other_pane_id="$(zellij action list-panes --json --all | python3 -c '
-import json, sys
-
-origin_id = int(sys.argv[1].split("_")[1])
-tab_id = int(sys.argv[2])
-
-for pane in json.load(sys.stdin):
-    if pane.get("tab_id") != tab_id:
-        continue
-    if pane.get("id") == origin_id:
-        continue
-    if pane.get("is_plugin"):
-        continue
-    
-    print("terminal_{}".format(pane["id"]))
-    raise SystemExit(0)
-
-raise SystemExit(1)
-' "$origin_pane" "$tab_id" 2>/dev/null || true)"
+  other_pane_id="$(zellij action list-panes --json --all \
+    | jq -r --argjson tab_id "$tab_id" \
+        '.[] | select(.tab_id == $tab_id and .is_plugin == false and .title == "picker") | "terminal_\(.id)"' \
+    | head -1)"
 
   if [[ -n "$other_pane_id" ]]; then
-    # Close the existing pane
+    # Close the existing picker pane
     zellij action close-pane --pane-id "$other_pane_id"
-    zellij action focus-pane-id "$origin_pane"
+    focus_pane_if_needed "$origin_pane"
+
+    # If this is now the only pane and it's not named 'editor', rename it
+    local remaining
+    remaining="$(zellij action list-panes --json --all \
+      | jq -r --argjson tab_id "$tab_id" \
+          '[.[] | select(.tab_id == $tab_id and .is_plugin == false)]
+           | "\(length):\(.[0].title // "")"')"
+    local pane_count="${remaining%%:*}"
+    local pane_title="${remaining#*:}"
+
+    if [[ "$pane_count" == "1" && "$pane_title" != "editor" ]]; then
+      zellij action rename-pane --pane-id "$origin_pane" editor
+    fi
+
     return
   fi
 
-  # Create new picker pane
+  # Create new picker pane; the buffer subcommand launches Yazi inside it
   local picker_id
   picker_id="$(zellij action new-pane \
     --tab-id "$tab_id" \
     --direction right \
     --width 20% \
+    --close-on-exit \
     --cwd "$cwd" \
     --name picker \
-    -- "$script_path" picker "$origin_pane" "$cwd")"
+    -- "$script_path" buffer "$origin_pane" "$cwd")"
 
   zellij action move-pane --pane-id "$picker_id" left
   resize_picker_width "$picker_id"
-  zellij action focus-pane-id "$picker_id"
+  focus_pane_if_needed "$picker_id"
 }
 
-run_picker() {
+########################################## BUFFER ##########################################
+
+# Sends a command to a Helix instance running in the given pane.
+# Presses Escape first to ensure normal mode, then runs :<command><Enter>.
+write_to_helix() {
+  local pane_id="$1"
+  shift
+  local command_text="$*"
+
+  focus_pane_if_needed "$pane_id"
+  zellij action write --pane-id "$pane_id" 27
+  zellij action write-chars --pane-id "$pane_id" ":$command_text"
+  zellij action write --pane-id "$pane_id" 13
+}
+
+# Entry point for the picker pane process. Sets $EDITOR so that Yazi calls
+# back into this script to open files in the origin Helix pane.
+run_buffer() {
   local origin_pane="$1"
   local cwd="$2"
-  local editor_cmd
-  editor_cmd="$script_path edit $origin_pane"
 
-  export EDITOR="$editor_cmd"
+  export EDITOR="$script_path buffer edit $origin_pane"
 
   if [[ "${HXYZ_USE_YAZI_CONFIG:-true}" != "false" ]]; then
     export YAZI_CONFIG_HOME="${hxyz_home}"
@@ -198,6 +185,8 @@ run_picker() {
   exec yazi "$cwd"
 }
 
+# Called by Yazi (via $EDITOR) when the user opens a selection.
+# Sends a Helix :open or :cd command to the origin pane, then exits.
 edit_from_picker() {
   local origin_pane="$1"
   shift
@@ -219,6 +208,78 @@ edit_from_picker() {
   write_to_helix "$origin_pane" "open ${escaped_paths[*]}"
 }
 
+########################################## VIBE ##########################################
+
+# Opens the Copilot CLI floating pane ('vibe'), creating it if needed.
+# If the pane already exists, pastes @file:line context into it and focuses it.
+open_vibe() {
+  [[ -n "${ZELLIJ:-}" ]] || fail "vibe must be run inside Zellij"
+
+  local file="${1:-}"
+  local line="${2:-}"
+
+  local vibe_pane_num
+  vibe_pane_num="$(zellij action list-panes --json --all \
+    | jq -r 'first(.[] | select(.is_plugin | not) | select(.is_floating) | select(.title == "vibe") | .id | tostring)')"
+
+  if [[ -z "$vibe_pane_num" || "$vibe_pane_num" == "null" ]]; then
+    # No vibe pane exists — create one and stop.
+    zellij run -f -x 10% -y 10% --width 80% --height 80% --name vibe -- copilot
+    return
+  fi
+
+  if [[ -n "$file" && -n "$line" ]]; then
+    zellij action write --pane-id "$vibe_pane_num" 21
+    zellij action paste --pane-id "$vibe_pane_num" "@${file}:${line} "
+  fi
+
+  # show-floating-panes is idempotent: exits 2 if already visible, not an error.
+  zellij action show-floating-panes || true
+  focus_pane_if_needed "$vibe_pane_num"
+}
+
+########################################## GIT ##########################################
+
+# Opens LazyGit in a full-screen-ish centered floating pane. The pane closes
+# itself automatically when LazyGit exits.
+open_lazygit() {
+  [[ -n "${ZELLIJ:-}" ]] || fail "git must be run inside Zellij"
+
+  zellij run -f -x 5% -y 5% --width 90% --height 90% -- sh -c 'lazygit && zellij action close-pane'
+}
+
+########################################## MAIN ##########################################
+
+# Returns the pane ID of the last non-floating, non-plugin pane in the given
+# Zellij session. Used to locate the main editor pane after session creation.
+session_main_pane_id() {
+  local session_name="$1"
+
+  zellij -s "$session_name" action list-panes --json --all \
+    | jq -r '[.[] | select(.is_plugin | not) | select(.is_floating | not)] | last | "terminal_\(.id)"'
+}
+
+# Like write_to_helix but targets a pane in a specific (possibly detached) session.
+write_to_session_pane() {
+  local session_name="$1"
+  local pane_id="$2"
+  shift 2
+  local command_text="$*"
+  local normalized_pane_id="${pane_id#terminal_}"
+  local focused_id
+  focused_id="$(zellij -s "$session_name" action list-panes --json --all \
+    | jq -r 'first(.[] | select(.is_focused == true) | .id | tostring) // empty')"
+
+  if [[ "$focused_id" != "$normalized_pane_id" ]]; then
+    zellij -s "$session_name" action focus-pane-id "terminal_${normalized_pane_id}"
+  fi
+  zellij -s "$session_name" action write --pane-id "$pane_id" 27
+  zellij -s "$session_name" action write-chars --pane-id "$pane_id" "$command_text"
+  zellij -s "$session_name" action write --pane-id "$pane_id" 13
+}
+
+# Parses top-level flags (-s), dispatches to the appropriate sub-command, or
+# bootstraps a new Zellij session with Helix when called with no arguments.
 main() {
   local session_name_arg=""
 
@@ -239,19 +300,28 @@ main() {
   local command="${1:-}"
 
   case "$command" in
-    toggle)
+    picker)
       shift
       toggle_picker "${1:-}"
       ;;
-    picker)
+    git)
       shift
-      [[ $# -eq 2 ]] || fail "picker requires <origin-pane> <cwd>"
-      run_picker "$1" "$2"
+      open_lazygit
       ;;
-    edit)
+    vibe)
       shift
-      [[ $# -ge 2 ]] || fail "edit requires <origin-pane> <path>..."
-      edit_from_picker "$@"
+      open_vibe "${1:-}" "${2:-}"
+      ;;
+    buffer)
+      shift
+      if [[ "${1:-}" == "edit" ]]; then
+        shift
+        [[ $# -ge 2 ]] || fail "buffer edit requires <origin-pane> <path>..."
+        edit_from_picker "$@"
+      else
+        [[ $# -eq 2 ]] || fail "buffer requires <origin-pane> <cwd>"
+        run_buffer "$1" "$2"
+      fi
       ;;
     -h|--help|help)
       usage
@@ -271,11 +341,12 @@ main() {
           fi
         done
         origin_pane="$(session_main_pane_id "$session_name")"
-        write_to_session_pane "$session_name" "$origin_pane" " hx"
-        #zellij --session "$session_name" run -- hx
-        #toggle_picker "$PWD"
+        # TODO - the rename doesn't currently work
+        write_to_session_pane "$session_name" "$origin_pane" " zellij action rename-pane editor; hx"
         zellij attach "$session_name"
       else
+        zellij action rename-pane "editor"
+
         # Try 'hx' first, then fall back to 'helix'
         if command -v hx &> /dev/null; then
           hx
