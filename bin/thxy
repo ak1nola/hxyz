@@ -17,8 +17,8 @@ Options:
 
 Commands:
   picker [path]         Toggle a left-side yazi pane in the current tmux window.
-  git                   Open LazyGit in a centered floating tmux pane.
-  vibe [file] [line]    Open Copilot CLI in a floating pane named 'vibe'.
+  git                   Open LazyGit in a centered floating tmux popup.
+  vibe [file] [line]    Open Copilot CLI in a centered floating tmux popup.
   buffer <pane> <cwd>   Internal: launch yazi inside the picker pane.
   buffer edit <pane> <path>...
                         Internal: open yazi selections in Helix.
@@ -55,131 +55,62 @@ resolve_cwd() {
   pwd
 }
 
-# Returns the Zellij tab_id of the pane this script is running in.
-current_tab_id() {
-  local pane_id="${ZELLIJ_PANE_ID:-}"
-  if [[ -z "$pane_id" ]]; then
-    # Get the focused pane ID if ZELLIJ_PANE_ID is not set
-    pane_id="$(zellij action list-panes --json --all | jq -r 'first(.[] | select(.is_focused == true) | .id)')"
-  fi
-  echo "DEBUG current_tab_id: ZELLIJ_PANE_ID='${ZELLIJ_PANE_ID:-UNSET}', determined pane_id='$pane_id'" >> /tmp/thxy-debug.log
-  [[ -n "$pane_id" && "$pane_id" != "null" ]] || fail "Could not determine pane ID"
-  echo "DEBUG: About to call jq with argjson id=$pane_id" >> /tmp/thxy-debug.log
-  zellij action list-panes --json | jq --argjson id "$pane_id" 'first(.[] | select(.id == $id) | .tab_id)'
+current_window_id() {
+  tmux display-message -p "#{window_id}"
 }
 
 focus_pane_if_needed() {
-  local pane_id="${1#terminal_}"
-  local focused_id
-  focused_id="$(zellij action list-panes --json --all \
-    | jq -r 'first(.[] | select(.is_focused == true) | .id | tostring) // empty')"
-
-  [[ "$focused_id" == "$pane_id" ]] || zellij action focus-pane-id "terminal_${pane_id}"
-}
-
-# Shrinks the picker pane width by issuing a fixed number of resize-decrease
-# steps. The commented-out block below shows a proportional approach that was
-# abandoned because zellij doesn't expose current pane pixel/cell dimensions.
-resize_picker_width() {
   local pane_id="$1"
-  local total_width
-  total_width="$(tput cols 2>/dev/null || printf '0')"
-
-  [[ "$total_width" =~ ^[0-9]+$ ]] || return 0
-  (( total_width > 0 )) || return 0
-
-  #local target_width=$(( total_width * 40 / 100 ))
-  #local current_width=$(( total_width / 2 ))
-  #local shrink_steps=$(( current_width - target_width ))
-  #local step
-
-  #(( shrink_steps > 0 )) || return 0
-  local shrink_steps=5
-
-  for (( step = 0; step < shrink_steps; step++ )); do
-    zellij action resize --pane-id "$pane_id" decrease right >/dev/null
-  done
+  tmux select-pane -t "$pane_id" 2>/dev/null || true
 }
 
-# Toggles a Yazi file-picker pane on the left side of the current Zellij tab.
-# If a picker pane already exists it is closed (and the main pane is renamed
-# 'editor' if it's the only one left). Otherwise a new picker pane is opened,
-# moved to the left, and focused.
+# Toggles a Yazi file-picker pane on the left side of the current Tmux window.
+# If a picker pane already exists it is closed.
+# Otherwise a new picker pane is opened and resized.
 toggle_picker() {
-  [[ -n "${ZELLIJ:-}" ]] || fail "picker must be run inside Zellij"
-  [[ -n "${ZELLIJ_PANE_ID:-}" ]] || fail "ZELLIJ_PANE_ID is not set"
+  [[ -n "${TMUX:-}" ]] || fail "picker must be run inside Tmux"
+  [[ -n "${TMUX_PANE:-}" ]] || fail "TMUX_PANE is not set"
 
-  local origin_pane="terminal_${ZELLIJ_PANE_ID}"
+  local origin_pane="${TMUX_PANE}"
   local cwd
   cwd="$(resolve_cwd "${1:-}")"
 
-  local tab_id
-  tab_id="$(current_tab_id)"
+  local window_id
+  window_id="$(current_window_id)"
 
-  # Find the picker pane (title == "picker") in this tab
-  local other_pane_id=""
-  echo "DEBUG toggle_picker: tab_id='$tab_id'" >> /tmp/thxy-debug.log
-  other_pane_id="$(zellij action list-panes --json --all \
-    | jq -r --argjson tab_id "$tab_id" \
-        '.[] | select(.tab_id == $tab_id and .is_plugin == false and .title == "picker") | "terminal_\(.id)"' \
-    | head -1)"
-  echo "DEBUG toggle_picker: other_pane_id='$other_pane_id'" >> /tmp/thxy-debug.log
+  # Find the picker pane (title == "picker") in this window
+  local other_pane_id
+  other_pane_id="$(tmux list-panes -t "$window_id" -F '#{pane_id}:#{pane_title}' | awk -F: '$2=="picker"{print $1}' | head -n1)"
 
   if [[ -n "$other_pane_id" ]]; then
     # Close the existing picker pane
-    zellij action close-pane --pane-id "$other_pane_id"
+    tmux kill-pane -t "$other_pane_id"
     focus_pane_if_needed "$origin_pane"
-
-    # If this is now the only pane and it's not named 'editor', rename it
-    local remaining
-    remaining="$(zellij action list-panes --json --all \
-      | jq -r --argjson tab_id "$tab_id" \
-          '[.[] | select(.tab_id == $tab_id and .is_plugin == false)]
-           | "\(length):\(.[0].title // "")"')"
-    local pane_count="${remaining%%:*}"
-    local pane_title="${remaining#*:}"
-
-    if [[ "$pane_count" == "1" && "$pane_title" != "editor" ]]; then
-      zellij action rename-pane --pane-id "$origin_pane" editor
-    fi
-
     return
   fi
 
   # Create new picker pane; the buffer subcommand launches Yazi inside it
+  local cmd
+  printf -v cmd '%q buffer %q %q' "$script_path" "$origin_pane" "$cwd"
+  
   local picker_id
-  picker_id="$(zellij action new-pane \
-    --tab-id "$tab_id" \
-    --direction right \
-    --width 20% \
-    --close-on-exit \
-    --cwd "$cwd" \
-    --name picker \
-    -- "$script_path" buffer "$origin_pane" "$cwd")"
+  picker_id="$(tmux split-window -P -F '#{pane_id}' -h -b -l 20% -c "$cwd" -t "$origin_pane" "$cmd")"
 
-  sleep 1
-  zellij action rename-pane --pane-id "$picker_id" picker
-
-  zellij action move-pane --pane-id "$picker_id" left
-  resize_picker_width "$picker_id"
+  tmux select-pane -T "picker" -t "$picker_id"
   focus_pane_if_needed "$picker_id"
 }
 
 ########################################## BUFFER ##########################################
 
 # Sends a command to a Helix instance running in the given pane.
-# Presses Escape multiple times to ensure exit from edit/insert mode, then runs :<command><Enter>.
+# Presses Escape twice to ensure exit from edit/insert mode, then runs :<command><Enter>.
 write_to_helix() {
   local pane_id="$1"
   shift
   local command_text="$*"
 
   focus_pane_if_needed "$pane_id"
-  # Send Escape twice to ensure we exit edit mode and any insert mode
-  zellij action write --pane-id "$pane_id" 27
-  zellij action write --pane-id "$pane_id" 27
-  zellij action write-chars --pane-id "$pane_id" ":$command_text"
-  zellij action write --pane-id "$pane_id" 13
+  tmux send-keys -t "$pane_id" Escape Escape ":$command_text" Enter
 }
 
 # Entry point for the picker pane process. Sets $EDITOR so that Yazi calls
@@ -189,7 +120,6 @@ run_buffer() {
   local cwd="$2"
 
   export EDITOR="$script_path buffer edit $origin_pane"
-  export ZELLIJ_PANE_NAME="picker"
 
   if [[ "${THXY_USE_YAZI_CONFIG:-true}" != "false" ]]; then
     export YAZI_CONFIG_HOME="${thxy_home}"
@@ -224,76 +154,30 @@ edit_from_picker() {
 
 ########################################## VIBE ##########################################
 
-# Opens the Copilot CLI floating pane ('vibe'), creating it if needed.
-# If the pane already exists, pastes @file:line context into it and focuses it.
+# Opens the Copilot CLI in a Tmux popup window.
 open_vibe() {
-  [[ -n "${ZELLIJ:-}" ]] || fail "vibe must be run inside Zellij"
+  [[ -n "${TMUX:-}" ]] || fail "vibe must be run inside Tmux"
 
   local file="${1:-}"
   local line="${2:-}"
 
-  local vibe_pane_num
-  vibe_pane_num="$(zellij action list-panes --json --all \
-    | jq -r 'first(.[] | select(.is_plugin | not) | select(.is_floating) | select(.title == "vibe") | .id | tostring)')"
-
-  if [[ -z "$vibe_pane_num" || "$vibe_pane_num" == "null" ]]; then
-    # No vibe pane exists — create one and stop.
-    zellij run -f -x 10% -y 10% --width 80% --height 80% --name vibe -- copilot
-    return
-  fi
-
-  if [[ -n "$file" && -n "$line" ]]; then
-    zellij action write --pane-id "$vibe_pane_num" 21
-    zellij action paste --pane-id "$vibe_pane_num" "@${file}:${line} "
-  fi
-
-  # show-floating-panes is idempotent: exits 2 if already visible, not an error.
-  zellij action show-floating-panes || true
-  focus_pane_if_needed "$vibe_pane_num"
+  # Tmux display-popup creates a modal overlay
+  tmux display-popup -E -w 80% -h 80% -T "vibe" "copilot"
 }
 
 ########################################## GIT ##########################################
 
-# Opens LazyGit in a full-screen-ish centered floating pane. The pane closes
-# itself automatically when LazyGit exits.
+# Opens LazyGit in a full-screen-ish centered floating popup.
 open_lazygit() {
-  [[ -n "${ZELLIJ:-}" ]] || fail "git must be run inside Zellij"
+  [[ -n "${TMUX:-}" ]] || fail "git must be run inside Tmux"
 
-  zellij run -f -x 5% -y 5% --width 90% --height 90% -- sh -c 'lazygit && zellij action close-pane'
+  tmux display-popup -E -d "#{pane_current_path}" -w 90% -h 90% "lazygit"
 }
 
 ########################################## MAIN ##########################################
 
-# Returns the pane ID of the last non-floating, non-plugin pane in the given
-# Zellij session. Used to locate the main editor pane after session creation.
-session_main_pane_id() {
-  local session_name="$1"
-
-  zellij -s "$session_name" action list-panes --json --all \
-    | jq -r '[.[] | select(.is_plugin | not) | select(.is_floating | not)] | last | "terminal_\(.id)"'
-}
-
-# Like write_to_helix but targets a pane in a specific (possibly detached) session.
-write_to_session_pane() {
-  local session_name="$1"
-  local pane_id="$2"
-  shift 2
-  local command_text="$*"
-  local normalized_pane_id="${pane_id#terminal_}"
-  local focused_id
-  focused_id="$(zellij -s "$session_name" action list-panes --json --all \
-    | jq -r 'first(.[] | select(.is_focused == true) | .id | tostring) // empty')"
-
-  if [[ "$focused_id" != "$normalized_pane_id" ]]; then
-    zellij -s "$session_name" action focus-pane-id "terminal_${normalized_pane_id}"
-  fi
-  zellij -s "$session_name" action write --pane-id "$pane_id" 27
-  zellij -s "$session_name" action write-chars --pane-id "$pane_id" "$command_text"
-  zellij -s "$session_name" action write --pane-id "$pane_id" 13
-}
-
 # Parses top-level flags (-s), dispatches to the appropriate sub-command, or
-# bootstraps a new Zellij session with Helix when called with no arguments.
+# bootstraps a new Tmux session with Helix when called with no arguments.
 main() {
   local session_name_arg=""
 
@@ -341,34 +225,23 @@ main() {
       usage
       ;;
     "")
-      # No command passed: start Zellij with Helix if not already running
-      if [[ -z "${ZELLIJ:-}" ]]; then
-        local session_name="${session_name_arg:-thxy-$$}"
-        local origin_pane
-        zellij attach --create-background "$session_name"
-        local waited=0
-        until zellij list-sessions | grep -q "$session_name"; do
-          sleep 0.1
-          waited=$((waited + 1))
-          if (( waited > 50 )); then
-            fail "zellij session $session_name not created in 5 seconds"
-          fi
-        done
-        origin_pane="$(session_main_pane_id "$session_name")"
-        # TODO - the rename doesn't currently work
-        write_to_session_pane "$session_name" "$origin_pane" " zellij action rename-pane editor; hx"
-        zellij attach "$session_name"
+      # Try 'hx' first, then fall back to 'helix'
+      local hx_cmd=""
+      if command -v hx &> /dev/null; then
+        hx_cmd="hx"
+      elif command -v helix &> /dev/null; then
+        hx_cmd="helix"
       else
-        zellij action rename-pane "editor"
+        fail "helix not found. Please install helix or hx"
+      fi
 
-        # Try 'hx' first, then fall back to 'helix'
-        if command -v hx &> /dev/null; then
-          hx
-        elif command -v helix &> /dev/null; then
-          helix
-        else
-          fail "helix not found. Please install helix or hx"
-        fi
+      if [[ -z "${TMUX:-}" ]]; then
+        local session_name="${session_name_arg:-thxy-$$}"
+        # Start a new Tmux session and run Helix
+        exec tmux new-session -A -s "$session_name" -n "editor" "$hx_cmd"
+      else
+        # If already in Tmux, just start Helix
+        exec "$hx_cmd"
       fi
       ;;
     *)
