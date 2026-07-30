@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-HXYZ Install Script
-Manages installation and uninstallation of hxyz
-(Helix + Zellij + Yazi integration) with dependency checking
+THXY Install Script
+Manages installation and uninstallation of thxy
+(tmux + Helix + yazi integration) with dependency checking
 and safe configuration updates.
 """
 
@@ -55,12 +55,12 @@ class InstallContext:
         self.home = Path.home()
 
         # Paths
-        self.hxyz_src = self.script_dir / "bin" / "hxyz"
-        self.hxyz_dst = self.home / ".local" / "bin" / "hxyz"
-        self.hz_symlink = self.home / ".local" / "bin" / "hz"
+        self.thxy_src = self.script_dir / "bin" / "thxy"
+        self.thxy_dst = self.home / ".local" / "bin" / "thxy"
+        self.th_symlink = self.home / ".local" / "bin" / "th"
 
         self.yazi_src = self.script_dir / "config" / "yazi.toml"
-        self.yazi_dst_dir = self.home / ".config" / "hxyz"
+        self.yazi_dst_dir = self.home / ".config" / "thxy"
         self.yazi_dst = self.yazi_dst_dir / "yazi.toml"
 
         self.helix_config = self.home / ".config" / "helix" / "config.toml"
@@ -133,26 +133,26 @@ class InstallContext:
         verbose("All dependencies found", self.verbose)
         return True
 
-    def check_hxyz_exists(self):
-        """Check if hxyz already exists in ~/.local/bin/"""
-        if self.hxyz_dst.exists():
-            print_error(f"hxyz already exists at {self.hxyz_dst}")
+    def check_thxy_exists(self):
+        """Check if thxy already exists in ~/.local/bin/"""
+        if self.thxy_dst.exists():
+            print_error(f"thxy already exists at {self.thxy_dst}")
             print_info("Remove it or use a different installation path")
             return True
-        verbose(f"hxyz not found at {self.hxyz_dst} (good)", self.verbose)
+        verbose(f"thxy not found at {self.thxy_dst} (good)", self.verbose)
         return False
 
-    def check_hz_symlink_exists(self):
-        """Check if hz symlink already exists in ~/.local/bin/"""
-        if self.hz_symlink.exists() or self.hz_symlink.is_symlink():
-            print_error(f"hz already exists at {self.hz_symlink}")
+    def check_th_symlink_exists(self):
+        """Check if th symlink already exists in ~/.local/bin/"""
+        if self.th_symlink.exists() or self.th_symlink.is_symlink():
+            print_error(f"th already exists at {self.th_symlink}")
             print_info("Remove it or use a different installation path")
             return True
-        verbose(f"hz not found at {self.hz_symlink} (good)", self.verbose)
+        verbose(f"th not found at {self.th_symlink} (good)", self.verbose)
         return False
 
     def check_keybinding_exists(self):
-        """Check if all hxyz keybindings already exist in helix config."""
+        """Check if all thxy keybindings already exist in helix config."""
         if not self.helix_config.exists():
             verbose(f"Helix config not found at {self.helix_config}", self.verbose)
             return False
@@ -234,7 +234,7 @@ class InstallContext:
             return False
 
     def remove_keybinding(self):
-        """Remove HXYZ keybindings from helix config."""
+        """Remove THXY keybindings from helix config."""
         if not self.helix_config.exists():
             print_warning(f"Helix config not found at {self.helix_config} (skipping)")
             return True
@@ -283,7 +283,7 @@ class InstallContext:
                     lines = lines[: section_start + 1] + new_body + lines[section_end:]
 
             if total_removed == 0:
-                print_warning("No hxyz keybindings found in helix config (skipping)")
+                print_warning("No thxy keybindings found in helix config (skipping)")
                 return True
 
             while True:
@@ -293,40 +293,40 @@ class InstallContext:
                 lines = collapsed.split("\n")
 
             if self.dry_run:
-                print(f"  Would remove hxyz keybindings from {self.helix_config}")
+                print(f"  Would remove thxy keybindings from {self.helix_config}")
                 return True
 
             self.helix_config.write_text("\n".join(lines).rstrip() + "\n")
-            print_success("Removed hxyz keybindings from helix config")
+            print_success("Removed thxy keybindings from helix config")
             return True
         except Exception as e:
-            print_error(f"Failed to remove hxyz keybindings: {e}")
+            print_error(f"Failed to remove thxy keybindings: {e}")
             return False
 
-    def install_hxyz(self):
-        """Copy hxyz script to ~/.local/bin/"""
-        if not self.hxyz_src.exists():
-            print_error(f"hxyz script not found at {self.hxyz_src}")
+    def install_thxy(self):
+        """Copy thxy script to ~/.local/bin/"""
+        if not self.thxy_src.exists():
+            print_error(f"thxy script not found at {self.thxy_src}")
             return False
 
-        self.hxyz_dst.parent.mkdir(parents=True, exist_ok=True)
+        self.thxy_dst.parent.mkdir(parents=True, exist_ok=True)
 
         if self.dry_run:
-            print(f"  Would copy {self.hxyz_src} → {self.hxyz_dst}")
+            print(f"  Would copy {self.thxy_src} → {self.thxy_dst}")
             return True
 
         try:
-            shutil.copy2(self.hxyz_src, self.hxyz_dst)
-            self.hxyz_dst.chmod(0o755)
-            verbose(f"Copied hxyz to {self.hxyz_dst}", self.verbose)
-            print_success("Installed hxyz to ~/.local/bin/hxyz")
+            shutil.copy2(self.thxy_src, self.thxy_dst)
+            self.thxy_dst.chmod(0o755)
+            verbose(f"Copied thxy to {self.thxy_dst}", self.verbose)
+            print_success("Installed thxy to ~/.local/bin/thxy")
             return True
         except Exception as e:
-            print_error(f"Failed to install hxyz: {e}")
+            print_error(f"Failed to install thxy: {e}")
             return False
 
     def install_yazi_config(self):
-        """Copy yazi.toml to ~/.config/hxyz/"""
+        """Copy yazi.toml to ~/.config/thxy/"""
         if not self.yazi_src.exists():
             print_error(f"yazi.toml not found at {self.yazi_src}")
             return False
@@ -340,32 +340,32 @@ class InstallContext:
         try:
             shutil.copy2(self.yazi_src, self.yazi_dst)
             verbose(f"Copied yazi.toml to {self.yazi_dst}", self.verbose)
-            print_success(f"Installed yazi config to ~/.config/hxyz/yazi.toml")
+            print_success(f"Installed yazi config to ~/.config/thxy/yazi.toml")
             return True
         except Exception as e:
             print_error(f"Failed to install yazi config: {e}")
             return False
 
-    def create_hz_symlink(self):
-        """Create hz symlink to hxyz executable"""
-        self.hz_symlink.parent.mkdir(parents=True, exist_ok=True)
+    def create_th_symlink(self):
+        """Create th symlink to thxy executable"""
+        self.th_symlink.parent.mkdir(parents=True, exist_ok=True)
 
         if self.dry_run:
-            print(f"  Would create symlink {self.hz_symlink} → {self.hxyz_dst}")
+            print(f"  Would create symlink {self.th_symlink} → {self.thxy_dst}")
             return True
 
         try:
-            # Create symlink using hxyz_dst as absolute path
-            self.hz_symlink.symlink_to(self.hxyz_dst)
-            verbose(f"Created symlink hz -> hxyz at {self.hz_symlink}", self.verbose)
-            print_success("Created 'hz' symlink to 'hxyz'")
+            # Create symlink using thxy_dst as absolute path
+            self.th_symlink.symlink_to(self.thxy_dst)
+            verbose(f"Created symlink th -> thxy at {self.th_symlink}", self.verbose)
+            print_success("Created 'th' symlink to 'thxy'")
             return True
         except Exception as e:
-            print_error(f"Failed to create hz symlink: {e}")
+            print_error(f"Failed to create th symlink: {e}")
             return False
 
     def inject_keybinding(self):
-        """Inject hxyz keybindings into helix config."""
+        """Inject thxy keybindings into helix config."""
         if not self.keybinding_src.exists():
             print_error(f"keybinding_config.txt not found at {self.keybinding_src}")
             return False
@@ -425,7 +425,7 @@ class InstallContext:
                     all_missing[section_name] = keys_for_section
 
             if not all_missing:
-                print_warning("hxyz keybindings already exist in helix config")
+                print_warning("thxy keybindings already exist in helix config")
                 return True
 
             if self.dry_run:
@@ -467,7 +467,7 @@ class InstallContext:
 
             self.helix_config.write_text(helix_content)
             verbose(f"Injected keybindings into {self.helix_config}", self.verbose)
-            print_success("Injected hxyz keybindings into helix config")
+            print_success("Injected thxy keybindings into helix config")
             return True
         except Exception as e:
             print_error(f"Failed to inject keybinding: {e}")
@@ -478,7 +478,7 @@ class InstallContext:
         print(
             f"\n{Colors.BLUE}╔════════════════════════════════════════╗{Colors.RESET}"
         )
-        print(f"{Colors.BLUE}║  HXYZ Installation Script              ║{Colors.RESET}")
+        print(f"{Colors.BLUE}║  THXY Installation Script              ║{Colors.RESET}")
         print(
             f"{Colors.BLUE}╚════════════════════════════════════════╝{Colors.RESET}\n"
         )
@@ -493,8 +493,8 @@ class InstallContext:
         print_success("Dependencies OK\n")
 
         print_info("Checking for conflicts...")
-        # We don't block on existing hxyz if it's already installed, but let's keep the existing logic
-        # unless it's problematic. The check_hxyz_exists currently prints error and returns True.
+        # We don't block on existing thxy if it's already installed, but let's keep the existing logic
+        # unless it's problematic. The check_thxy_exists currently prints error and returns True.
 
         # If both keybindings exist, we can warn but maybe we should still allow
         # other parts of the installation if they are missing?
@@ -509,11 +509,11 @@ class InstallContext:
         # Installation
         print_info("Installing components...")
         # These will overwrite if already exists or handle accordingly
-        if not self.install_hxyz():
+        if not self.install_thxy():
             return False
 
-        if not self.create_hz_symlink():
-            # This might fail if it already exists, let's see create_hz_symlink
+        if not self.create_th_symlink():
+            # This might fail if it already exists, let's see create_th_symlink
             pass  # ignore failure for symlink if it exists?
 
         if not self.install_yazi_config():
@@ -532,7 +532,7 @@ class InstallContext:
         print(
             f"\n{Colors.BLUE}╔════════════════════════════════════════╗{Colors.RESET}"
         )
-        print(f"{Colors.BLUE}║  HXYZ Uninstall Script                 ║{Colors.RESET}")
+        print(f"{Colors.BLUE}║  THXY Uninstall Script                 ║{Colors.RESET}")
         print(
             f"{Colors.BLUE}╚════════════════════════════════════════╝{Colors.RESET}\n"
         )
@@ -543,13 +543,13 @@ class InstallContext:
         print_info("Removing installed components...")
         success = True
 
-        if not self.remove_file_or_symlink(self.hxyz_dst, "hxyz executable"):
+        if not self.remove_file_or_symlink(self.thxy_dst, "thxy executable"):
             success = False
 
-        if not self.remove_file_or_symlink(self.hz_symlink, "hz symlink"):
+        if not self.remove_file_or_symlink(self.th_symlink, "th symlink"):
             success = False
 
-        if not self.remove_directory(self.yazi_dst_dir, "hxyz config directory"):
+        if not self.remove_directory(self.yazi_dst_dir, "thxy config directory"):
             success = False
 
         if not self.remove_keybinding():
@@ -572,14 +572,14 @@ class InstallContext:
         print(f"  Action:      Open Lazygit in floating pane\n")
 
         print(f"{Colors.BLUE}Setup Summary:{Colors.RESET}")
-        print(f"  ✓ hxyz script → ~/.local/bin/hxyz")
-        print(f"  ✓ hz symlink → ~/.local/bin/hz")
-        print(f"  ✓ yazi config → ~/.config/hxyz/yazi.toml")
+        print(f"  ✓ thxy script → ~/.local/bin/thxy")
+        print(f"  ✓ th symlink → ~/.local/bin/th")
+        print(f"  ✓ yazi config → ~/.config/thxy/yazi.toml")
         print(f"  ✓ Helix keybindings injected\n")
 
         print(f"{Colors.BLUE}Next Steps:{Colors.RESET}")
         print(
-            f"  1. Start with: {Colors.YELLOW}hxyz{Colors.RESET} or {Colors.YELLOW}hz{Colors.RESET}"
+            f"  1. Start with: {Colors.YELLOW}thxy{Colors.RESET} or {Colors.YELLOW}th{Colors.RESET}"
         )
         print(
             f"  2. Or use keybinding: {Colors.YELLOW}space + m + f/g{Colors.RESET} in Helix\n"
@@ -588,15 +588,15 @@ class InstallContext:
     def show_post_uninstall_info(self):
         """Display post-uninstall information"""
         print(f"{Colors.BLUE}Removed:{Colors.RESET}")
-        print(f"  ✓ ~/.local/bin/hxyz")
-        print(f"  ✓ ~/.local/bin/hz")
-        print(f"  ✓ ~/.config/hxyz")
-        print(f"  ✓ hxyz keybindings from ~/.config/helix/config.toml\n")
+        print(f"  ✓ ~/.local/bin/thxy")
+        print(f"  ✓ ~/.local/bin/th")
+        print(f"  ✓ ~/.config/thxy")
+        print(f"  ✓ thxy keybindings from ~/.config/helix/config.toml\n")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Install or uninstall HXYZ (Helix + Zellij + Yazi integration)",
+        description="Install or uninstall THXY (tmux + Helix + yazi integration)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -613,7 +613,7 @@ Examples:
         nargs="?",
         choices=["install", "uninstall"],
         default="install",
-        help="Choose whether to install or uninstall HXYZ",
+        help="Choose whether to install or uninstall THXY",
     )
 
     parser.add_argument(

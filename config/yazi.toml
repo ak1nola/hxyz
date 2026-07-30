@@ -1,6 +1,9 @@
 [mgr]
 ratio = [1, 7, 0]
 
+[plugin]
+preload = []
+
 [opener]
 edit = [
 	{ run = '$EDITOR "$@"', block = false, for = "unix" },

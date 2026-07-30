@@ -3,25 +3,25 @@
 set -euo pipefail
 
 script_path="$0"
-hxyz_home="${HXYZ_HOME:-$HOME/.config/hxyz}"
+thxy_home="${THXY_HOME:-$HOME/.config/thxy}"
 
-# Uncomment to enable debug logging: tail -f /tmp/hxyz.log
-# exec 2>>/tmp/hxyz.log; set -x
+# Uncomment to enable debug logging: tail -f /tmp/thxy.log
+# exec 2>>/tmp/thxy.log; set -x
 
 usage() {
   cat <<'EOF'
-Usage: hxyz [-s <session-name>] <command> [args]
+Usage: thxy [-s <session-name>] <command> [args]
 
 Options:
-  -s <name>             Session name (default: hxyz-$pid).
+  -s <name>             Session name (default: thxy-$pid).
 
 Commands:
-  picker [path]         Toggle a left-side Yazi pane in the current Zellij tab.
-  git                   Open LazyGit in a centered floating Zellij pane.
+  picker [path]         Toggle a left-side yazi pane in the current tmux window.
+  git                   Open LazyGit in a centered floating tmux pane.
   vibe [file] [line]    Open Copilot CLI in a floating pane named 'vibe'.
-  buffer <pane> <cwd>   Internal: launch Yazi inside the picker pane.
+  buffer <pane> <cwd>   Internal: launch yazi inside the picker pane.
   buffer edit <pane> <path>...
-                        Internal: open Yazi selections in Helix.
+                        Internal: open yazi selections in Helix.
 EOF
 }
 
@@ -58,8 +58,14 @@ resolve_cwd() {
 # Returns the Zellij tab_id of the pane this script is running in.
 current_tab_id() {
   local pane_id="${ZELLIJ_PANE_ID:-}"
-  [[ -n "$pane_id" ]] || fail "ZELLIJ_PANE_ID is not set"
-  zellij action list-panes --json | jq --argjson id "$pane_id" '.[] | select(.id == $id) | .tab_id'
+  if [[ -z "$pane_id" ]]; then
+    # Get the focused pane ID if ZELLIJ_PANE_ID is not set
+    pane_id="$(zellij action list-panes --json --all | jq -r 'first(.[] | select(.is_focused == true) | .id)')"
+  fi
+  echo "DEBUG current_tab_id: ZELLIJ_PANE_ID='${ZELLIJ_PANE_ID:-UNSET}', determined pane_id='$pane_id'" >> /tmp/thxy-debug.log
+  [[ -n "$pane_id" && "$pane_id" != "null" ]] || fail "Could not determine pane ID"
+  echo "DEBUG: About to call jq with argjson id=$pane_id" >> /tmp/thxy-debug.log
+  zellij action list-panes --json | jq --argjson id "$pane_id" 'first(.[] | select(.id == $id) | .tab_id)'
 }
 
 focus_pane_if_needed() {
@@ -112,10 +118,12 @@ toggle_picker() {
 
   # Find the picker pane (title == "picker") in this tab
   local other_pane_id=""
+  echo "DEBUG toggle_picker: tab_id='$tab_id'" >> /tmp/thxy-debug.log
   other_pane_id="$(zellij action list-panes --json --all \
     | jq -r --argjson tab_id "$tab_id" \
         '.[] | select(.tab_id == $tab_id and .is_plugin == false and .title == "picker") | "terminal_\(.id)"' \
     | head -1)"
+  echo "DEBUG toggle_picker: other_pane_id='$other_pane_id'" >> /tmp/thxy-debug.log
 
   if [[ -n "$other_pane_id" ]]; then
     # Close the existing picker pane
@@ -149,6 +157,9 @@ toggle_picker() {
     --name picker \
     -- "$script_path" buffer "$origin_pane" "$cwd")"
 
+  sleep 1
+  zellij action rename-pane --pane-id "$picker_id" picker
+
   zellij action move-pane --pane-id "$picker_id" left
   resize_picker_width "$picker_id"
   focus_pane_if_needed "$picker_id"
@@ -157,13 +168,15 @@ toggle_picker() {
 ########################################## BUFFER ##########################################
 
 # Sends a command to a Helix instance running in the given pane.
-# Presses Escape first to ensure normal mode, then runs :<command><Enter>.
+# Presses Escape multiple times to ensure exit from edit/insert mode, then runs :<command><Enter>.
 write_to_helix() {
   local pane_id="$1"
   shift
   local command_text="$*"
 
   focus_pane_if_needed "$pane_id"
+  # Send Escape twice to ensure we exit edit mode and any insert mode
+  zellij action write --pane-id "$pane_id" 27
   zellij action write --pane-id "$pane_id" 27
   zellij action write-chars --pane-id "$pane_id" ":$command_text"
   zellij action write --pane-id "$pane_id" 13
@@ -176,9 +189,10 @@ run_buffer() {
   local cwd="$2"
 
   export EDITOR="$script_path buffer edit $origin_pane"
+  export ZELLIJ_PANE_NAME="picker"
 
-  if [[ "${HXYZ_USE_YAZI_CONFIG:-true}" != "false" ]]; then
-    export YAZI_CONFIG_HOME="${hxyz_home}"
+  if [[ "${THXY_USE_YAZI_CONFIG:-true}" != "false" ]]; then
+    export YAZI_CONFIG_HOME="${thxy_home}"
   fi
 
   cd -- "$cwd"
@@ -329,7 +343,7 @@ main() {
     "")
       # No command passed: start Zellij with Helix if not already running
       if [[ -z "${ZELLIJ:-}" ]]; then
-        local session_name="${session_name_arg:-hxyz-$$}"
+        local session_name="${session_name_arg:-thxy-$$}"
         local origin_pane
         zellij attach --create-background "$session_name"
         local waited=0
