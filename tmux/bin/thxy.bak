@@ -155,14 +155,18 @@ edit_from_picker() {
 ########################################## VIBE ##########################################
 
 # Opens the Copilot CLI in a Tmux popup window.
+# Users can close the popup by exiting the Copilot CLI (Ctrl+D, 'exit', or 'quit')
+# or using tmux prefix + x to kill the pane.
 open_vibe() {
   [[ -n "${TMUX:-}" ]] || fail "vibe must be run inside Tmux"
 
   local file="${1:-}"
   local line="${2:-}"
 
-  # Tmux display-popup creates a modal overlay
-  tmux display-popup -E -w 80% -h 80% -T "vibe" "copilot"
+  # The -E flag ensures the popup closes when copilot exits
+  # The -K flag allows prefix key (Ctrl+b by default) to work inside the popup
+  # Title instructs users how to close: exit copilot or use prefix+x
+  tmux display-popup -E -K -w 75% -h 75% -T "Copilot CLI (exit/quit/Ctrl+D to close)" "copilot"
 }
 
 ########################################## GIT ##########################################

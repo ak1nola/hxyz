@@ -1,0 +1,53 @@
+WHXY Project Structure
+======================
+
+This is a WezTerm-based variant of THXY that provides file picker integration
+for Helix using yazi and WezTerm's native pane management.
+
+Key Differences from THXY:
+- Uses WezTerm CLI instead of tmux for pane management
+- No external multiplexer dependency (WezTerm has built-in panes)
+- Simpler setup with one less tool to install
+- GPU-accelerated rendering via WezTerm
+
+Project Structure:
+------------------
+wezTerm/
+├── bin/
+│   └── whxy                    # Main executable script (bash)
+├── config/
+│   └── yazi.toml              # Yazi configuration
+├── install.py                  # Installation/uninstallation script (Python)
+├── keybinding_config.txt      # Helix keybindings template
+└── README.md                  # Complete documentation
+
+Installation:
+-------------
+cd wezTerm
+python3 install.py
+
+This will:
+1. Install whxy to ~/.local/bin/whxy
+2. Create wh symlink to ~/.local/bin/wh
+3. Copy yazi config to ~/.config/whxy/yazi.toml
+4. Inject keybindings into ~/.config/helix/config.toml
+
+Keybindings:
+------------
+space + m + f  - Toggle file picker (yazi)
+space + m + g  - Open lazygit
+space + m + o  - Open Copilot CLI
+
+Dependencies:
+-------------
+- WezTerm (terminal emulator)
+- Helix/hx (text editor)
+- yazi (file manager)
+- Python 3 (for installer)
+
+Optional:
+- lazygit (for git integration)
+- copilot (for AI assistance)
+
+Version: 1.0
+Created: 2026-07-31

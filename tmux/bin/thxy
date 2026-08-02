@@ -1,0 +1,302 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Set MULTIPLEXER environment variable for this script
+export MULTIPLEXER=tmux
+
+script_path="$0"
+thxy_home="${THXY_HOME:-$HOME/.config/thxy}"
+
+# Uncomment to enable debug logging: tail -f /tmp/thxy.log
+# exec 2>>/tmp/thxy.log; set -x
+
+usage() {
+  cat <<'EOF'
+Usage: thxy [-s <session-name>] <command> [args]
+
+Options:
+  -s <name>             Session name (default: thxy-$pid).
+
+Commands:
+  picker [path]         Toggle a left-side yazi pane in the current tmux window.
+  terminal              Toggle a terminal pane at the bottom of the current tmux window.
+  git                   Open LazyGit in a centered floating tmux popup.
+  vibe [file] [line]    Open Copilot CLI in a centered floating tmux popup.
+  buffer <pane> <cwd>   Internal: launch yazi inside the picker pane.
+  buffer edit <pane> <path>...
+                        Internal: open yazi selections in Helix.
+EOF
+}
+
+fail() {
+  echo "Error: $*" >&2
+  exit 1
+}
+
+########################################## PICKER ##########################################
+
+# Resolves the working directory from an optional path argument.
+# If a file is given, returns its parent directory. Falls back to $PWD.
+resolve_cwd() {
+  local target="${1:-}"
+
+  if [[ -z "$target" ]]; then
+    pwd
+    return
+  fi
+
+  if [[ -d "$target" ]]; then
+    cd -- "$target" && pwd
+    return
+  fi
+
+  if [[ -f "$target" ]]; then
+    cd -- "$(dirname -- "$target")" && pwd
+    return
+  fi
+
+  pwd
+}
+
+current_window_id() {
+  tmux display-message -p "#{window_id}"
+}
+
+focus_pane_if_needed() {
+  local pane_id="$1"
+  tmux select-pane -t "$pane_id" 2>/dev/null || true
+}
+
+# Toggles a Yazi file-picker pane on the left side of the current Tmux window.
+# If a picker pane already exists it is closed.
+# Otherwise a new picker pane is opened and resized.
+toggle_picker() {
+  [[ -n "${TMUX:-}" ]] || fail "picker must be run inside Tmux"
+  [[ -n "${TMUX_PANE:-}" ]] || fail "TMUX_PANE is not set"
+
+  local origin_pane="${TMUX_PANE}"
+  local cwd
+  cwd="$(resolve_cwd "${1:-}")"
+
+  local window_id
+  window_id="$(current_window_id)"
+
+  # Find the picker pane (marked with @is_thxy_side_panel=1) in this window
+  local other_pane_id
+  other_pane_id="$(tmux list-panes -t "$window_id" -F '#{pane_id}:#{@is_thxy_side_panel}' | grep ':1$' | cut -d: -f1 | head -n1)"
+
+  if [[ -n "$other_pane_id" ]]; then
+    # Close the existing picker pane
+    tmux kill-pane -t "$other_pane_id"
+    focus_pane_if_needed "$origin_pane"
+    return
+  fi
+
+  # Create new picker pane; the buffer subcommand launches Yazi inside it
+  local cmd
+  printf -v cmd '%q buffer %q %q' "$script_path" "$origin_pane" "$cwd"
+  
+  local picker_id
+  picker_id="$(tmux split-window -P -F '#{pane_id}' -h -b -l 20% -c "$cwd" -t "$origin_pane" "$cmd")"
+
+  tmux set-pane -t "$picker_id" -T "thxy-side-panel"
+  tmux set-pane -t "$picker_id" "@is_thxy_side_panel" 1
+  focus_pane_if_needed "$picker_id"
+}
+
+########################################## TERMINAL ##########################################
+
+# Toggles a terminal pane at the bottom of the current tmux window.
+# If a terminal pane already exists it is closed.
+# Otherwise a new terminal pane is opened at the bottom.
+toggle_terminal() {
+  [[ -n "${TMUX:-}" ]] || fail "terminal must be run inside Tmux"
+  [[ -n "${TMUX_PANE:-}" ]] || fail "TMUX_PANE is not set"
+
+  local origin_pane="${TMUX_PANE}"
+
+  local window_id
+  window_id="$(current_window_id)"
+
+  # Find the terminal pane (marked with @is_thxy_terminal=1) in this window
+  local terminal_pane_id
+  terminal_pane_id="$(tmux list-panes -t "$window_id" -F '#{pane_id}:#{@is_thxy_terminal}' | grep ':1$' | cut -d: -f1 | head -n1)"
+
+  if [[ -n "$terminal_pane_id" ]]; then
+    # Close the existing terminal pane
+    tmux kill-pane -t "$terminal_pane_id"
+    focus_pane_if_needed "$origin_pane"
+    return
+  fi
+
+  # Create new terminal pane at the bottom (30% height)
+  local terminal_id
+  terminal_id="$(tmux split-window -P -F '#{pane_id}' -v -l 30% -t "$origin_pane")"
+
+  tmux set-pane -t "$terminal_id" -T "terminal"
+  tmux set-pane -t "$terminal_id" "@is_thxy_terminal" 1
+  focus_pane_if_needed "$terminal_id"
+}
+
+########################################## BUFFER ##########################################
+
+# Sends a command to a Helix instance running in the given pane.
+# Presses Escape twice to ensure exit from edit/insert mode, then runs :<command><Enter>.
+write_to_helix() {
+  local pane_id="$1"
+  shift
+  local command_text="$*"
+
+  focus_pane_if_needed "$pane_id"
+  tmux send-keys -t "$pane_id" Escape Escape ":$command_text" Enter
+}
+
+# Entry point for the picker pane process. Sets $EDITOR so that Yazi calls
+# back into this script to open files in the origin Helix pane.
+run_buffer() {
+  local origin_pane="$1"
+  local cwd="$2"
+
+  export EDITOR="$script_path buffer edit $origin_pane"
+
+  if [[ "${THXY_USE_YAZI_CONFIG:-true}" != "false" ]]; then
+    export YAZI_CONFIG_HOME="${thxy_home}"
+  fi
+
+  cd -- "$cwd"
+  exec yazi "$cwd"
+}
+
+# Called by Yazi (via $EDITOR) when the user opens a selection.
+# Sends a Helix :open or :cd command to the origin pane, then exits.
+edit_from_picker() {
+  local origin_pane="$1"
+  shift
+  local paths=("$@")
+  local escaped_paths=()
+  local path
+
+  [[ ${#paths[@]} -gt 0 ]] || exit 0
+
+  for path in "${paths[@]}"; do
+    escaped_paths+=("$(printf '%q' "$path")")
+  done
+
+  if [[ ${#escaped_paths[@]} -eq 1 && ! -f "${paths[0]}" ]]; then
+    write_to_helix "$origin_pane" "cd ${escaped_paths[0]}"
+    exit 0
+  fi
+
+  write_to_helix "$origin_pane" "open ${escaped_paths[*]}"
+}
+
+########################################## VIBE ##########################################
+
+# Opens the Copilot CLI in a Tmux popup window.
+# Users can close the popup by exiting the Copilot CLI (Ctrl+D, 'exit', or 'quit')
+# or using tmux prefix + x to kill the pane.
+open_vibe() {
+  [[ -n "${TMUX:-}" ]] || fail "vibe must be run inside Tmux"
+
+  local file="${1:-}"
+  local line="${2:-}"
+
+  # The -E flag ensures the popup closes when copilot exits
+  # The -K flag allows prefix key (Ctrl+b by default) to work inside the popup
+  # Title instructs users how to close: exit copilot or use prefix+x
+  tmux display-popup -E -w 75% -h 75% -T "Copilot CLI (exit/quit/Ctrl+D to close)" "copilot"
+}
+
+########################################## GIT ##########################################
+
+# Opens LazyGit in a full-screen-ish centered floating popup.
+open_lazygit() {
+  [[ -n "${TMUX:-}" ]] || fail "git must be run inside Tmux"
+
+  tmux display-popup -E -d "#{pane_current_path}" -w 90% -h 90% "lazygit"
+}
+
+########################################## MAIN ##########################################
+
+# Parses top-level flags (-s), dispatches to the appropriate sub-command, or
+# bootstraps a new Tmux session with Helix when called with no arguments.
+main() {
+  local session_name_arg=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -s)
+        shift
+        [[ $# -gt 0 ]] || fail "-s requires a session name"
+        session_name_arg="$1"
+        shift
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+
+  local command="${1:-}"
+
+  case "$command" in
+    picker)
+      shift
+      toggle_picker "${1:-}"
+      ;;
+    terminal)
+      toggle_terminal
+      ;;
+    git)
+      shift
+      open_lazygit
+      ;;
+    vibe)
+      shift
+      open_vibe "${1:-}" "${2:-}"
+      ;;
+    buffer)
+      shift
+      if [[ "${1:-}" == "edit" ]]; then
+        shift
+        [[ $# -ge 2 ]] || fail "buffer edit requires <origin-pane> <path>..."
+        edit_from_picker "$@"
+      else
+        [[ $# -eq 2 ]] || fail "buffer requires <origin-pane> <cwd>"
+        run_buffer "$1" "$2"
+      fi
+      ;;
+    -h|--help|help)
+      usage
+      ;;
+    "")
+      # Try 'hx' first, then fall back to 'helix'
+      local hx_cmd=""
+      if command -v hx &> /dev/null; then
+        hx_cmd="hx"
+      elif command -v helix &> /dev/null; then
+        hx_cmd="helix"
+      else
+        fail "helix not found. Please install helix or hx"
+      fi
+
+      if [[ -z "${TMUX:-}" ]]; then
+        local session_name="${session_name_arg:-thxy-$$}"
+        # Start a new Tmux session and run Helix
+        export MULTIPLEXER=tmux
+        exec tmux new-session -A -s "$session_name" -n "editor" "$hx_cmd"
+      else
+        # If already in Tmux, just start Helix
+        export MULTIPLEXER=tmux
+        exec "$hx_cmd"
+      fi
+      ;;
+    *)
+      usage >&2
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

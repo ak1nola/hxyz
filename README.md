@@ -1,311 +1,376 @@
-# THXY - tmux + Helix + yazi Integration
+# HXYZ - Helix Editor Integration Suite
 
-A powerful simple picker integration that brings seamless file selection to Helix through yazi and tmux terminal multiplexing.
+A collection of terminal integrations that bring seamless file picker functionality to the Helix text editor using yazi file manager.
 
-It is based on [zide](https://github.com/josephschmitt/zide) - but, hopefully, a little more lightweight and simpler.
+## Available Variants
 
-## What is THXY?
+This repository contains three variants of the same concept, each using a different terminal multiplexer:
 
-THXY is a shell script that integrates three powerful terminal tools:
-- **tmux** - A terminal multiplexer
-- **Helix** - A modern text editor
-- **yazi** - A blazing fast file manager
+### 🔷 HXYZ (Zellij-based) - Original
+**Location:** [`zellij/`](zellij/)
 
-It provides a convenient file picker directly accessible from within Helix via a simple keybinding.
+Uses Zellij for terminal multiplexing.
 
-## Features
+```bash
+cd zellij/
+python3 install.py
+```
 
-- **Quick File Picker**: Toggle a file picker pane with `space + m + f` in Helix (`thxy picker`)
-- **Seamless Navigation**: Browse files in yazi and open selections directly in Helix
-- **Session Management**: Auto-creates named tmux sessions for organization
-- **Configuration Support**: Includes optimized yazi configuration
-- **Non-Destructive Install**: Safe installation with conflict detection
+**Best for:**
+- Modern terminal multiplexer experience
+- Those wanting built-in layouts
+- Tab-based workflow preference
+- Rust-based tooling enthusiasts
 
-## Nota Bene
+### 🖥️ THXY (tmux-based)
+**Location:** [`tmux/`](tmux/)
 
-The file picker command (`thxy picker`) toggles a pane titled `picker` in the current tmux window. If the pane exists it is closed, otherwise a new left-side yazi pane is created for the current working directory.
+Uses tmux for terminal multiplexing.
 
-## Requirements
+```bash
+cd tmux/
+python3 install.py
+```
 
-Before installing THXY, ensure you have the following installed:
+**Best for:**
+- Users who already use tmux
+- Those needing session persistence
+- Remote work via SSH
+- Maximum terminal compatibility
 
-- **tmux** - Terminal multiplexer
-- **yazi** - File manager
-- **Helix** (or `hx`) - Text editor
-- **Python 3** - For the install script
+### ⚡ WHXY (WezTerm-based)
+**Location:** [`wezTerm/`](wezTerm/)
+
+Uses WezTerm's built-in pane management.
+
+```bash
+cd wezTerm/
+python3 install.py
+```
+
+**Best for:**
+- WezTerm users
+- GPU-accelerated rendering
+- Simpler setup (one less dependency)
+- Better font/ligature rendering
+
+## Unified Command: `zwt`
+
+The repository includes a unified command `zwt` (Zellij/WezTerm/Tmux) that automatically detects your current multiplexer and routes commands to the appropriate script (hxyz, thxy, or whxy).
+
+**Location:** [`common/bin/zwt`](common/bin/zwt)
+
+The `zwt` command:
+- Auto-detects which multiplexer you're running (Zellij, WezTerm, or tmux)
+- Routes commands to the correct script automatically
+- Uses the `MULTIPLEXER` environment variable if set
+- Provides a consistent interface across all variants
+
+**Usage:**
+```bash
+# Use zwt instead of hxyz/thxy/whxy - it works in any multiplexer
+zwt picker      # Toggle file picker
+zwt git         # Open LazyGit
+zwt vibe        # Open Copilot CLI
+```
+
+The unified keybindings in [`common/config/keybinding_config.txt`](common/config/keybinding_config.txt) use `zwt` to work seamlessly across all three multiplexers.
+
+## Quick Comparison
+
+| Feature | HXYZ (Zellij) | THXY (tmux) | WHXY (WezTerm) |
+|---------|---------------|-------------|----------------|
+| **Multiplexer** | Zellij | tmux (external) | WezTerm (built-in) |
+| **Dependencies** | Zellij + terminal | tmux + terminal | WezTerm only |
+| **Session Management** | ✅ Yes | ✅ Yes | ❌ No |
+| **Performance** | Fast (Rust) | Terminal-dependent | GPU-accelerated |
+| **Remote SSH** | ✅ Good | ✅ Excellent | ⚠️ Limited |
+| **Setup Complexity** | Medium | Medium | Simple |
+| **Config Language** | KDL | Config file | Lua |
+
+## Features (Both Variants)
+
+- 🎯 **File Picker**: Toggle yazi picker with `space + m + f`
+- 🔀 **Git Integration**: Open LazyGit with `space + m + g`
+- 🤖 **AI Assistant**: Open Copilot CLI with `space + m + o`
+- 🔄 **Multi-file Selection**: Select and open multiple files at once
+- ⚡ **Auto-focus**: Helix automatically focuses after file selection
+- 🛡️ **Safe Install**: Non-destructive installation with conflict detection
+
+## What Each Variant Provides
+
+Both variants integrate three powerful tools:
+- **Helix** (`hx`) - Modern text editor
+- **yazi** - Fast file manager
+- **Terminal Multiplexer** - tmux or WezTerm
+
+### Keybindings (Identical for Both)
+
+While editing in Helix:
+
+| Key Combo | Action |
+|-----------|--------|
+| `space` + `m` + `f` | Toggle file picker |
+| `space` + `m` + `g` | Open LazyGit |
+| `space` + `m` + `o` | Open Copilot CLI |
 
 ## Installation
 
-### Using the Install Script
+### Prerequisites
 
-Note: the install script also creates a 'th' symlink so that after installation you can open tmux + Helix with either `th` or `thxy`
+Both variants require:
+- **Helix** or `hx` text editor
+- **yazi** file manager
+- **Python 3** for the installer
 
-1. Navigate to the THXY directory:
-   ```bash
-   cd ./thxy
-   ```
+Additionally:
+- **THXY** requires: tmux
+- **WHXY** requires: WezTerm
 
-2. Run the install script:
-   ```bash
-   python3 install.py
-   ```
+### Install THXY (tmux variant)
 
-   **Options:**
-   - `--dry-run` - Preview what will be installed without making changes
-   - `--verbose` or `-v` - Show detailed progress during installation
-   - `--no-dep-check` - Skip dependency verification
+```bash
+cd tmux
+python3 install.py
+```
 
-3. The script will:
-   - ✓ Verify all dependencies are installed
-   - ✓ Check for conflicts with existing files
-   - ✓ Copy the thxy script to `~/.local/bin/thxy`
-   - ✓ Copy yazi configuration to `~/.config/thxy/yazi.toml`
-   - ✓ Inject the keybinding into your Helix config
+This installs:
+- `~/.local/bin/thxy` and `~/.local/bin/th` commands
+- `~/.config/thxy/` configuration
+- Helix keybindings
 
-### Manual Installation
+### Install WHXY (WezTerm variant)
 
-If you prefer to install manually:
+```bash
+cd wezTerm
+python3 install.py
+```
 
-1. Copy the script:
-   ```bash
-   cp bin/thxy ~/.local/bin/thxy
-   chmod +x ~/.local/bin/thxy
-   ```
+This installs:
+- `~/.local/bin/whxy` and `~/.local/bin/wh` commands
+- `~/.config/whxy/` configuration
+- Helix keybindings
 
-2. Copy the yazi configuration:
-   ```bash
-   mkdir -p ~/.config/thxy
-   cp config/yazi.toml ~/.config/thxy/yazi.toml
-   ```
+### Can I Install Multiple Variants?
 
-3. Add the keybinding to your Helix config (`~/.config/helix/config.toml`):
-   ```toml
-   [keys.normal.space.m]
-   f = ':sh thxy picker "%{buffer_name}"'
-   g = ':sh thxy git'
-   ```
+Yes! All three variants can coexist peacefully:
+- They use different command names (`hxyz` vs `thxy` vs `whxy`)
+- They use different config directories (`~/.config/hxyz` vs `~/.config/thxy` vs `~/.config/whxy`)
+- They all support the unified `zwt` command for cross-multiplexer compatibility
+- The keybindings can use `zwt` to work with any installed variant
 
 ## Usage
 
-### Using the Keybinding
-
-While editing in Helix (running within tmux):
-
-1. Press `space` (space leader key)
-2. Press `m` (group key)
-3. Press `f` (file picker key)
-
-This toggles a file picker pane on the left. You can then:
-- Navigate files with arrow keys or `j`/`k`
-- Open files with `Enter`
-- Select multiple files
-- Close the picker with `q` or `ESC`
-
-### Using the Command
-
-You can also run THXY directly from the terminal:
+After installation, you can use either the specific command or the unified `zwt`:
 
 ```bash
-# Start THXY in current directory
-thxy
+# Specific commands
+hxyz        # Zellij variant
+thxy        # or just: th (tmux variant)
 
-# Start with custom session name
-thxy -s myproject
-
-# Show usage information
-thxy --help
+# WHXY (WezTerm variant)
+whxy        # or just: wh
 ```
 
-## How It Works
+Then use the keybindings inside Helix:
+- `space + m + f` - File picker
+- `space + m + g` - LazyGit
+- `space + m + o` - Copilot CLI
 
-### The File Picker Flow
+## Documentation
 
-1. **Toggle Picker**: Press `space m f` in Helix (runs `thxy picker "%{buffer_name}"`)
-2. **Browse Files**: Use yazi to navigate the file system
-3. **Select & Open**: Choose files to open in Helix
-4. **Auto-focus**: Helix pane automatically receives focus when you select files
+Each variant has complete documentation in its directory:
 
-### Session Management
+### HXYZ Documentation
+- [`zellij/README.md`](zellij/README.md) - Complete guide
+- [`zellij/install.py`](zellij/install.py) - Installation script
 
-THXY creates tmux sessions with auto-generated names or custom names:
-- Default format: `thxy-{process-id}`
-- Custom name: `thxy -s myproject` creates a session named exactly `myproject`
+### THXY Documentation
+- [`tmux/README.md`](tmux/README.md) - Complete guide
+- [`tmux/install.py`](tmux/install.py) - Installation script
 
-This allows multiple independent THXY sessions without conflicts.
+### WHXY Documentation
+- [`wezTerm/README.md`](wezTerm/README.md) - Complete guide
+- [`wezTerm/QUICKSTART.md`](wezTerm/QUICKSTART.md) - Quick start
+- [`wezTerm/COMPARISON.md`](wezTerm/COMPARISON.md) - Detailed comparison
+- [`wezTerm/install.py`](wezTerm/install.py) - Installation script
 
-## Configuration
+### Common Files
+- [`common/bin/zwt`](common/bin/zwt) - Unified multiplexer proxy command
+- [`common/config/keybinding_config.txt`](common/config/keybinding_config.txt) - Unified Helix keybindings
 
-### yazi Configuration
+## Architecture
 
-The THXY installation includes an optimized `yazi.toml` configuration file at:
+### HXYZ (Zellij variant)
 ```
-~/.config/thxy/yazi.toml
+User → Helix (in Zellij pane) → hxyz picker
+  ↓
+Zellij creates yazi pane
+  ↓
+User selects files in yazi
+  ↓
+hxyz sends :open to Helix pane
 ```
 
-This configuration is tailored for use with THXY and Helix integration. You can customize it further if needed.
+### THXY (tmux variant)
+```
+User → Helix (in tmux pane) → thxy picker
+  ↓
+tmux creates yazi pane
+  ↓
+User selects files in yazi
+  ↓
+thxy sends :open to Helix pane
+```
 
-### Environment Variables
+### WHXY (WezTerm variant)
+```
+User → Helix (in WezTerm pane) → whxy picker
+  ↓
+WezTerm creates yazi pane
+  ↓
+User selects files in yazi
+  ↓
+whxy sends :open to Helix pane
+```
 
-You can customize THXY behavior with environment variables:
+## Which Should I Choose?
+
+### Choose HXYZ if:
+- ✅ You already use Zellij
+- ✅ You want modern terminal multiplexing
+- ✅ You prefer Rust-based tools
+- ✅ You like built-in layout management
+- ✅ You want tab-based workflow
+
+### Choose THXY if:
+- ✅ You already use tmux daily
+- ✅ You work on remote servers via SSH
+- ✅ You need session persistence (detach/reattach)
+- ✅ You want maximum terminal compatibility
+- ✅ You prefer battle-tested tools
+
+### Choose WHXY if:
+- ✅ You already use WezTerm
+- ✅ You want GPU-accelerated rendering
+- ✅ You prefer fewer dependencies
+- ✅ You value font rendering quality
+- ✅ You work primarily on local machine
+
+### Still Unsure?
+
+If you're starting fresh and don't have a preference:
+- **Zellij users**: Use HXYZ (native integration)
+- **WezTerm users**: Use WHXY (simpler setup)
+- **tmux users**: Use THXY (familiar workflow)
+- **Neither**: Try WHXY first (easier to set up)
+
+**Pro tip:** Use the unified `zwt` command with the `common/config/keybinding_config.txt` keybindings to work seamlessly across any installed variant.
+
+## Uninstallation
+
+All variants support clean uninstallation:
 
 ```bash
-# Set custom yazi configuration directory
-export THXY_HOME=~/.config/custom/yazi
+# HXYZ
+cd zellij
+python3 install.py uninstall
+# THXY
+cd tmux
+python3 install.py uninstall
 
-# Disable custom yazi config (use system default)
-export THXY_USE_YAZI_CONFIG=false
-
-# Custom session prefix
-thxy -s custom-session-name
-```
-
-### Helix Keybindings
-
-If you want to customize the keybindings, edit `~/.config/helix/config.toml`:
-
-```toml
-[keys.normal.space.m]
-f = ':sh thxy picker "%{buffer_name}"'  # Current binding
-g = ':sh thxy git'                       # Lazygit popup
-
-# You can also add custom variations:
-# q = ':sh thxy picker'               # Open without current file context
-# v = ':sh thxy -s vsplit picker'     # Future: split variation
+# WHXY
+cd wezTerm
+python3 install.py uninstall
 ```
 
 ## Troubleshooting
 
-### "Missing dependencies" error
+### Common to All Variants
 
-**Problem**: The install script reports missing tmux, yazi, or Helix
-
-**Solution**: Install the missing tools
+**"Helix not found"**
 ```bash
-# Example for Arch Linux
-sudo pacman -S tmux yazi helix
-
-# Or use your package manager
+# Install Helix
+brew install helix        # macOS
+sudo pacman -S helix      # Arch Linux
 ```
 
-To skip dependency checking (if tools are installed in non-standard locations):
+**"yazi not found"**
 ```bash
-python3 install.py --no-dep-check
+# Install yazi
+brew install yazi         # macOS
+sudo pacman -S yazi       # Arch Linux
 ```
 
-### "thxy already exists" error
+### HXYZ Specific
 
-**Problem**: THXY installation detects an existing thxy at `~/.local/bin/thxy`
-
-**Solution**: Either remove the existing file or verify it's the version you want:
+**"zellij not found"**
 ```bash
-rm ~/.local/bin/thxy
-python3 install.py
+brew install zellij       # macOS
+sudo pacman -S zellij     # Arch Linux
+# Or: cargo install zellij
 ```
 
-### "space m f already exists" error
+### THXY Specific
 
-**Problem**: The keybinding is already present in Helix config
-
-**Solution**: This is expected if you've already installed THXY. The install script prevents duplicate keybindings. If you want to reinstall:
+**"tmux not found"**
 ```bash
-# Edit ~/.config/helix/config.toml and remove the thxy keybinding
-# Then run install again
-python3 install.py
+brew install tmux         # macOS
+sudo apt install tmux     # Ubuntu/Debian
+sudo pacman -S tmux       # Arch Linux
 ```
 
-### Files not opening in Helix
+### WHXY Specific
 
-**Problem**: Selected files don't appear in Helix after using the picker
-
-**Solution**: 
-- Ensure Helix is the active pane (it should auto-focus after selection)
-- Check that your Helix config is properly loaded
-- Verify the keybinding is correctly installed with `thxy --help`
-
-## Uninstalling
-
-** Use the uninstall mode in the install script **
-
+**"wezterm not found"**
 ```bash
-python3 install.py uninstall
+brew install --cask wezterm    # macOS
+# Linux: see https://wezfurlong.org/wezterm/install/linux.html
 ```
-
-This removes the following (i.e. you can uninstall manually this way):
-- `~/.local/bin/thxy`
-- `~/.local/bin/th`
-- `~/.config/thxy`
-- The THXY keys added under `[keys.normal.space.m]` in `~/.config/helix/config.toml`
-
-## Performance Tips
-
-1. **First Run**: The first time you use `thxy`, tmux creates the session. This takes 1-2 seconds.
-
-2. **Session Reuse**: Subsequent calls reuse the existing tmux session for faster startup.
-
-3. **yazi Preview**: The included yazi.toml enables image previews. Disable if you want faster performance:
-   ```toml
-   [preview]
-   tab_size = 0  # Disable tab size preview
-   ```
-
-## Architecture
-
-### File Structure
-
-```
-~/.local/bin/thxy              # Executable script
-~/.config/helix/config.toml    # Helix config with keybinding (modified during install)
-~/.config/thxy/
-├── yazi.toml                  # yazi configuration
-└── plugins/
-    └── auto-layout.yazi       # Auto-layout plugin for yazi
-```
-
-### Session Layout
-
-When you run `thxy picker`, THXY creates:
-```
-tmux Session
-├── Main Pane (Helix)
-└── Left Pane (yazi file picker)
-```
-
-Files selected in yazi are automatically opened in the Helix pane.
 
 ## Development
 
-### Modifying the Script
+All three variants are standalone bash scripts with Python installers:
 
-The THXY scripts are written in bash and use:
-- tmux CLI for pane management
-- `jq` for JSON parsing
-- yazi for file browsing
-
-Key script responsibilities:
-- `bin/thxy` - Main command dispatcher (`picker`, `git`, `vibe`, and internal `loadbuffer`)
-- `bin/thxy-picker` - Opens/closes the picker pane in the current tmux window
-- `bin/thxy-buffer` - Runs yazi and handles picker callbacks that open files in Helix
-
-### Contributing
-
-To improve THXY:
-1. Edit `bin/thxy`
-2. Test with `thxy picker`
-3. Report issues or suggest improvements
-
-## License
-
-THXY is provided as-is. Use at your own risk.
+```
+hxyz/
+├── common/        # Shared utilities
+│   ├── bin/zwt    # Unified proxy command
+│   └── config/    # Unified keybindings
+├── zellij/        # HXYZ variant
+│   ├── bin/hxyz   # Main script
+│   └── install.py # Installer
+├── tmux/          # THXY variant
+│   ├── bin/thxy   # Main script
+│   └── install.py # Installer
+└── wezTerm/       # WHXY variant
+    ├── bin/whxy   # Main script
+    └── install.py # Installer
+```
 
 ## Credits
 
-THXY integrates:
+All three variants integrate:
+- **Helix** - Modern text editor (https://helix-editor.com)
+- **yazi** - Fast file manager (https://yazi.rs)
+
+HXYZ uses:
+- **Zellij** - Terminal multiplexer (https://zellij.dev)
+
+THXY uses:
 - **tmux** - Terminal multiplexer (https://github.com/tmux/tmux)
-- **yazi** - File manager (https://yazi.rs)
-- **Helix** - Text editor (https://helix-editor.com)
+
+WHXY uses:
+- **WezTerm** - GPU-accelerated terminal (https://wezfurlong.org/wezterm/)
+
+Originally inspired by [zide](https://github.com/josephschmitt/zide).
+
+## License
+
+Provided as-is. Use at your own risk.
 
 ---
 
+**Repository**: [ak1nola/hxyz](https://github.com/ak1nola/hxyz)  
 **Version**: 1.0  
-**Last Updated**: 2026-05-15  
-**Installed at**: `~/Projects/thxy`
+**Last Updated**: 2026-07-31

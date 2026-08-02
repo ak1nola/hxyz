@@ -25,6 +25,9 @@ class Colors:
     DIM = "\033[2m"
 
 
+def print_blah():
+    return "your parents seem pretty cool"
+
 def print_info(msg):
     print(f"{Colors.BLUE}ℹ{Colors.RESET} {msg}")
 
@@ -59,12 +62,15 @@ class InstallContext:
         self.thxy_dst = self.home / ".local" / "bin" / "thxy"
         self.th_symlink = self.home / ".local" / "bin" / "th"
 
+        self.zwt_src = self.script_dir.parent / "common" / "bin" / "zwt"
+        self.zwt_dst = self.home / ".local" / "bin" / "zwt"
+
         self.yazi_src = self.script_dir / "config" / "yazi.toml"
         self.yazi_dst_dir = self.home / ".config" / "thxy"
         self.yazi_dst = self.yazi_dst_dir / "yazi.toml"
 
         self.helix_config = self.home / ".config" / "helix" / "config.toml"
-        self.keybinding_src = self.script_dir / "keybinding_config.txt"
+        self.keybinding_src = self.script_dir.parent / "common" / "config" / "keybinding_config.txt"
 
     def get_keybinding_spec(self):
         """Read keybinding sections and their key names from keybinding source file.
@@ -325,6 +331,28 @@ class InstallContext:
             print_error(f"Failed to install thxy: {e}")
             return False
 
+    def install_zwt(self):
+        """Copy zwt script to ~/.local/bin/"""
+        if not self.zwt_src.exists():
+            print_error(f"zwt script not found at {self.zwt_src}")
+            return False
+
+        self.zwt_dst.parent.mkdir(parents=True, exist_ok=True)
+
+        if self.dry_run:
+            print(f"  Would copy {self.zwt_src} → {self.zwt_dst}")
+            return True
+
+        try:
+            shutil.copy2(self.zwt_src, self.zwt_dst)
+            self.zwt_dst.chmod(0o755)
+            verbose(f"Copied zwt to {self.zwt_dst}", self.verbose)
+            print_success("Installed zwt to ~/.local/bin/zwt")
+            return True
+        except Exception as e:
+            print_error(f"Failed to install zwt: {e}")
+            return False
+
     def install_yazi_config(self):
         """Copy yazi.toml to ~/.config/thxy/"""
         if not self.yazi_src.exists():
@@ -496,13 +524,10 @@ class InstallContext:
         # We don't block on existing thxy if it's already installed, but let's keep the existing logic
         # unless it's problematic. The check_thxy_exists currently prints error and returns True.
 
-        # If both keybindings exist, we can warn but maybe we should still allow
-        # other parts of the installation if they are missing?
-        # For now, let's keep it consistent with existing flow.
-
-        if self.check_keybinding_exists():
+        # If both keybindings exist, we can warn but we should skip injection
+        keybindings_exist = self.check_keybinding_exists()
+        if keybindings_exist:
             print_warning("'space m' keybindings already configured in helix")
-            # We don't return False here because we might still need to install the script/config
 
         print_success("No conflicts detected\n")
 
@@ -512,6 +537,9 @@ class InstallContext:
         if not self.install_thxy():
             return False
 
+        if not self.install_zwt():
+            return False
+
         if not self.create_th_symlink():
             # This might fail if it already exists, let's see create_th_symlink
             pass  # ignore failure for symlink if it exists?
@@ -519,8 +547,11 @@ class InstallContext:
         if not self.install_yazi_config():
             return False
 
-        if not self.inject_keybinding():
-            return False
+        if not keybindings_exist:
+            if not self.inject_keybinding():
+                return False
+        else:
+            verbose("Skipping keybinding injection (already exists)", self.verbose)
 
         # Success
         print(f"\n{Colors.GREEN}✓ Installation successful!{Colors.RESET}\n")
