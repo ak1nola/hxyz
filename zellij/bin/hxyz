@@ -274,19 +274,35 @@ raise SystemExit(1)
   zellij action focus-pane-id "$terminal_id"
 }
 
+
 ########################################## VIBE ##########################################
 
-# Opens the Copilot CLI in a floating Zellij pane.
-# Users can close the pane by exiting the Copilot CLI (Ctrl+D, 'exit', or 'quit')
-# or using Zellij's close pane keybinding.
+# Opens the Copilot CLI floating pane ('vibe'), creating it if needed.
+# If the pane already exists, pastes @file:line context into it and focuses it.
 open_vibe() {
   [[ -n "${ZELLIJ:-}" ]] || fail "vibe must be run inside Zellij"
 
   local file="${1:-}"
   local line="${2:-}"
 
-  # Create a new floating pane with copilot
-  zellij action new-pane --floating --name "copilot-cli" -- copilot
+  local vibe_pane_num
+  vibe_pane_num="$(zellij action list-panes --json --all \
+    | jq -r 'first(.[] | select(.is_plugin | not) | select(.is_floating) | select(.title == "vibe") | .id | tostring)')"
+
+  if [[ -z "$vibe_pane_num" || "$vibe_pane_num" == "null" ]]; then
+    # No vibe pane exists — create one and stop.
+    zellij run -f -x 10% -y 10% --width 80% --height 80% --name vibe -- copilot
+    return
+  fi
+
+  if [[ -n "$file" && -n "$line" ]]; then
+    zellij action write --pane-id "$vibe_pane_num" 21
+    zellij action paste --pane-id "$vibe_pane_num" "@${file}:${line} "
+  fi
+
+  # show-floating-panes is idempotent: exits 2 if already visible, not an error.
+  zellij action show-floating-panes || true
+  focus_pane_if_needed "$vibe_pane_num"
 }
 
 ########################################## GIT ##########################################
