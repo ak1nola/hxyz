@@ -18,6 +18,8 @@ Options:
 Commands:
   picker [path]         Toggle a left-side Yazi pane in the current Zellij tab.
   terminal              Toggle a terminal pane at the bottom of the current Zellij tab.
+  git                   Open LazyGit in a floating Zellij pane.
+  vibe [file] [line]    Open Copilot CLI in a floating Zellij pane.
   _picker <pane> <cwd>  Internal command used inside the picker pane.
   edit <pane> <path>... Internal command used by Yazi to open selections in Helix.
 EOF
@@ -272,6 +274,31 @@ raise SystemExit(1)
   zellij action focus-pane-id "$terminal_id"
 }
 
+########################################## VIBE ##########################################
+
+# Opens the Copilot CLI in a floating Zellij pane.
+# Users can close the pane by exiting the Copilot CLI (Ctrl+D, 'exit', or 'quit')
+# or using Zellij's close pane keybinding.
+open_vibe() {
+  [[ -n "${ZELLIJ:-}" ]] || fail "vibe must be run inside Zellij"
+
+  local file="${1:-}"
+  local line="${2:-}"
+
+  # Create a new floating pane with copilot
+  zellij action new-pane --floating --name "copilot-cli" -- copilot
+}
+
+########################################## GIT ##########################################
+
+# Opens LazyGit in a floating Zellij pane.
+open_lazygit() {
+  [[ -n "${ZELLIJ:-}" ]] || fail "git must be run inside Zellij"
+
+  # Create a new floating pane with lazygit
+  zellij action new-pane --floating --name "lazygit" -- lazygit
+}
+
 main() {
   local session_name_arg=""
 
@@ -298,6 +325,14 @@ main() {
       ;;
     terminal)
       toggle_terminal
+      ;;
+    git)
+      shift
+      open_lazygit
+      ;;
+    vibe)
+      shift
+      open_vibe "${1:-}" "${2:-}"
       ;;
     _picker)
       shift
