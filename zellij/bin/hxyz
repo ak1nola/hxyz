@@ -307,12 +307,12 @@ open_vibe() {
 
 ########################################## GIT ##########################################
 
-# Opens LazyGit in a floating Zellij pane.
+# Opens LazyGit in a full-screen-ish centered floating pane. The pane closes
+# itself automatically when LazyGit exits.
 open_lazygit() {
   [[ -n "${ZELLIJ:-}" ]] || fail "git must be run inside Zellij"
 
-  # Create a new floating pane with lazygit
-  zellij action new-pane --floating --name "lazygit" -- lazygit
+  zellij run -f -x 5% -y 5% --width 90% --height 90% -- sh -c 'lazygit && zellij action close-pane'
 }
 
 main() {

@@ -22,6 +22,9 @@ python3 install.py
 - Tab-based workflow preference
 - Rust-based tooling enthusiasts
 
+**This is the only well tested version**
+
+
 ### 🖥️ THXY (tmux-based)
 **Location:** [`tmux/`](tmux/)
 

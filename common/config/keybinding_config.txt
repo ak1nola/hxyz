@@ -3,3 +3,5 @@ f = ':sh zwt picker "%{buffer_name}"' # Toggle the left yazi pane and open selec
 g = ':sh zwt git'                     # Open LazyGit
 o = ':sh zwt vibe "%{buffer_name}" %{cursor_line}' # Toggle Copilot CLI in a floating pane
 t = ':sh zwt terminal'                # Toggle terminal pane at the bottom
+b = ":sh git blame -L %{cursor_line},%{cursor_line} %{buffer_name}"
+c = ":sh git blame -L %{cursor_line},%{cursor_line} %{buffer_name} | awk '{print $1}' | xclip -selection clipboard"
