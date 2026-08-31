@@ -8,6 +8,20 @@ export MULTIPLEXER=zellij
 script_path="$0"
 hxyz_home="${HXYZ_HOME:-$HOME/.config/hxyz}"
 
+# Constants
+readonly PICKER_WIDTH="20%"
+readonly TERMINAL_HEIGHT="30%"
+readonly LAZYGIT_WIDTH="90%"
+readonly LAZYGIT_HEIGHT="90%"
+readonly VIBE_WIDTH="80%"
+readonly VIBE_HEIGHT="80%"
+readonly PICKER_RESIZE_STEPS=5
+
+# Key codes for Helix commands
+readonly KEY_ESC=27
+readonly KEY_ENTER=13
+readonly KEY_CTRL_U=21
+
 usage() {
   cat <<'EOF'
 Usage: hxyz [-s <session-name>] <command> [args]
@@ -18,8 +32,9 @@ Options:
 Commands:
   picker [path]         Toggle a left-side Yazi pane in the current Zellij tab.
   terminal              Toggle a terminal pane at the bottom of the current Zellij tab.
-  git                   Open LazyGit in a floating Zellij pane.
-  vibe [file] [line]    Open Copilot CLI in a floating Zellij pane.
+  newtab [path]         Create a new tab for a different repository/directory.
+  git                   Open LazyGit in a floating Zellij pane (per-tab).
+  vibe [file] [line]    Open Copilot CLI in a floating Zellij pane (per-tab).
   _picker <pane> <cwd>  Internal command used inside the picker pane.
   edit <pane> <path>... Internal command used by Yazi to open selections in Helix.
 EOF
@@ -28,6 +43,48 @@ EOF
 fail() {
   echo "Error: $*" >&2
   exit 1
+}
+
+require_zellij() {
+  [[ -n "${ZELLIJ:-}" ]] || fail "${1:-This command} must be run inside Zellij"
+}
+
+require_zellij_pane_id() {
+  [[ -n "${ZELLIJ_PANE_ID:-}" ]] || fail "ZELLIJ_PANE_ID is not set"
+}
+
+# Normalize pane ID (strip terminal_ prefix if present)
+normalize_pane_id() {
+  echo "${1#terminal_}"
+}
+
+# Ensure pane ID has terminal_ prefix
+ensure_pane_prefix() {
+  local id="${1#terminal_}"
+  echo "terminal_${id}"
+}
+
+# Find a floating pane by name in the current or all sessions
+# Returns pane ID or empty string
+find_floating_pane() {
+  local pane_name="$1"
+  zellij action list-panes --json --all \
+    | jq -r --arg name "$pane_name" \
+        'first(.[] | select(.is_floating) | select(.title == $name) | .id | tostring) // empty'
+}
+
+# Show and focus an existing floating pane, or return 1 if it doesn't exist
+show_floating_pane() {
+  local pane_id="$1"
+  
+  if [[ -z "$pane_id" || "$pane_id" == "null" ]]; then
+    return 1
+  fi
+  
+  # show-floating-panes is idempotent: exits 2 if already visible, not an error
+  zellij action show-floating-panes || true
+  focus_pane_if_needed "$pane_id"
+  return 0
 }
 
 resolve_cwd() {
@@ -52,8 +109,8 @@ resolve_cwd() {
 }
 
 current_tab_id() {
-  local pane_id="${ZELLIJ_PANE_ID:-}"
-  [[ -n "$pane_id" ]] || fail "ZELLIJ_PANE_ID is not set"
+  require_zellij_pane_id
+  local pane_id="${ZELLIJ_PANE_ID}"
   zellij action list-panes --json | jq --argjson id "$pane_id" '.[] | select(.id == $id) | .tab_id'
 }
 
@@ -65,12 +122,16 @@ session_main_pane_id() {
 }
 
 focus_pane_if_needed() {
-  local pane_id="${1#terminal_}"
+  local pane_id
+  pane_id="$(normalize_pane_id "$1")"
+  
   local focused_id
   focused_id="$(zellij action list-panes --json --all \
     | jq -r 'first(.[] | select(.is_focused == true) | .id | tostring) // empty')"
 
-  [[ "$focused_id" == "$pane_id" ]] || zellij action focus-pane-id "terminal_${pane_id}"
+  if [[ "$focused_id" != "$pane_id" ]]; then
+    zellij action focus-pane-id "terminal_${pane_id}"
+  fi
 }
 
 write_to_helix() {
@@ -79,9 +140,9 @@ write_to_helix() {
   local command_text="$*"
 
   focus_pane_if_needed "$pane_id"
-  zellij action write --pane-id "$pane_id" 27
+  zellij action write --pane-id "$pane_id" "$KEY_ESC"
   zellij action write-chars --pane-id "$pane_id" ":$command_text"
-  zellij action write --pane-id "$pane_id" 13
+  zellij action write --pane-id "$pane_id" "$KEY_ENTER"
 }
 
 write_to_session_pane() {
@@ -89,7 +150,9 @@ write_to_session_pane() {
   local pane_id="$2"
   shift 2
   local command_text="$*"
-  local normalized_pane_id="${pane_id#terminal_}"
+  local normalized_pane_id
+  normalized_pane_id="$(normalize_pane_id "$pane_id")"
+  
   local focused_id
   focused_id="$(zellij -s "$session_name" action list-panes --json --all \
     | jq -r 'first(.[] | select(.is_focused == true) | .id | tostring) // empty')"
@@ -97,9 +160,9 @@ write_to_session_pane() {
   if [[ "$focused_id" != "$normalized_pane_id" ]]; then
     zellij -s "$session_name" action focus-pane-id "terminal_${normalized_pane_id}"
   fi
-  zellij -s "$session_name" action write --pane-id "$pane_id" 27
+  zellij -s "$session_name" action write --pane-id "$pane_id" "$KEY_ESC"
   zellij -s "$session_name" action write-chars --pane-id "$pane_id" "$command_text"
-  zellij -s "$session_name" action write --pane-id "$pane_id" 13
+  zellij -s "$session_name" action write --pane-id "$pane_id" "$KEY_ENTER"
 }
 
 resize_picker_width() {
@@ -110,22 +173,16 @@ resize_picker_width() {
   [[ "$total_width" =~ ^[0-9]+$ ]] || return 0
   (( total_width > 0 )) || return 0
 
-  #local target_width=$(( total_width * 40 / 100 ))
-  #local current_width=$(( total_width / 2 ))
-  #local shrink_steps=$(( current_width - target_width ))
-  #local step
-
-  #(( shrink_steps > 0 )) || return 0
-  local shrink_steps=5
+  local shrink_steps="$PICKER_RESIZE_STEPS"
 
   for (( step = 0; step < shrink_steps; step++ )); do
-    zellij action resize --pane-id "$pane_id" decrease right >/dev/null
+    zellij action resize --pane-id "$pane_id" decrease right >/dev/null 2>&1 || true
   done
 }
 
 toggle_picker() {
-  [[ -n "${ZELLIJ:-}" ]] || fail "toggle must be run inside Zellij"
-  [[ -n "${ZELLIJ_PANE_ID:-}" ]] || fail "ZELLIJ_PANE_ID is not set"
+  require_zellij "picker"
+  require_zellij_pane_id
 
   local origin_pane="terminal_${ZELLIJ_PANE_ID}"
   local cwd
@@ -134,16 +191,16 @@ toggle_picker() {
   local tab_id
   tab_id="$(current_tab_id)"
 
-  # Find the first non-origin pane in this tab (typically the leftmost extra pane)
-  local origin_id="${origin_pane#terminal_}"
-  local other_pane_id=""
-  other_pane_id="$(zellij action list-panes --json --all \
-    | jq -r --argjson tab_id "$tab_id" --argjson origin_id "$origin_id" \
-        'first(.[] | select(.tab_id == $tab_id and .id != $origin_id and .is_plugin == false) | "terminal_\(.id)") // empty')"
+  # Find the picker pane (named "hxyz-side-panel") in this tab
+  # Filters: matching tab_id, not a plugin, title is "hxyz-side-panel"
+  local picker_pane_id
+  picker_pane_id="$(zellij action list-panes --json --all \
+    | jq -r --argjson tab_id "$tab_id" \
+        'first(.[] | select(.tab_id == $tab_id and .is_plugin == false and .title == "hxyz-side-panel") | "terminal_\(.id)") // empty')"
 
-  if [[ -n "$other_pane_id" ]]; then
-    # Close the existing pane
-    zellij action close-pane --pane-id "$other_pane_id"
+  if [[ -n "$picker_pane_id" ]]; then
+    # Close the existing picker pane
+    zellij action close-pane --pane-id "$picker_pane_id"
     focus_pane_if_needed "$origin_pane"
     return
   fi
@@ -153,7 +210,7 @@ toggle_picker() {
   picker_id="$(zellij action new-pane \
     --tab-id "$tab_id" \
     --direction right \
-    --width 20% \
+    --width "$PICKER_WIDTH" \
     --cwd "$cwd" \
     --name hxyz-side-panel \
     -- "$script_path" _picker "$origin_pane" "$cwd")"
@@ -201,8 +258,8 @@ edit_from_picker() {
 }
 
 toggle_terminal() {
-  [[ -n "${ZELLIJ:-}" ]] || fail "terminal must be run inside Zellij"
-  [[ -n "${ZELLIJ_PANE_ID:-}" ]] || fail "ZELLIJ_PANE_ID is not set"
+  require_zellij "terminal"
+  require_zellij_pane_id
 
   local origin_pane="terminal_${ZELLIJ_PANE_ID}"
 
@@ -210,8 +267,10 @@ toggle_terminal() {
   tab_id="$(current_tab_id)"
 
   # Find the terminal pane in this tab (look for a pane named "terminal")
-  local origin_id="${origin_pane#terminal_}"
-  local terminal_pane_id=""
+  # Filters: matching tab_id, not origin pane, not a plugin, title is "terminal"
+  local origin_id
+  origin_id="$(normalize_pane_id "$origin_pane")"
+  local terminal_pane_id
   terminal_pane_id="$(zellij action list-panes --json --all \
     | jq -r --argjson tab_id "$tab_id" --argjson origin_id "$origin_id" \
         'first(.[] | select(.tab_id == $tab_id and .id != $origin_id and .is_plugin == false and .title == "terminal") | "terminal_\(.id)") // empty')"
@@ -228,10 +287,10 @@ toggle_terminal() {
   terminal_id="$(zellij action new-pane \
     --tab-id "$tab_id" \
     --direction down \
-    --height 30% \
+    --height "$TERMINAL_HEIGHT" \
     --name terminal)"
 
-  zellij action focus-pane-id "$terminal_id"
+  focus_pane_if_needed "$terminal_id"
 }
 
 
@@ -239,40 +298,59 @@ toggle_terminal() {
 
 # Opens the Copilot CLI floating pane ('vibe'), creating it if needed.
 # If the pane already exists, pastes @file:line context into it and focuses it.
+# Each tab has its own vibe instance.
 open_vibe() {
-  [[ -n "${ZELLIJ:-}" ]] || fail "vibe must be run inside Zellij"
+  require_zellij "vibe"
 
   local file="${1:-}"
   local line="${2:-}"
+  
+  local tab_id
+  tab_id="$(current_tab_id)"
+  local pane_name="vibe-tab-${tab_id}"
 
   local vibe_pane_num
-  vibe_pane_num="$(zellij action list-panes --json --all \
-    | jq -r 'first(.[] | select(.is_plugin | not) | select(.is_floating) | select(.title == "vibe") | .id | tostring)')"
+  vibe_pane_num="$(find_floating_pane "$pane_name")"
 
-  if [[ -z "$vibe_pane_num" || "$vibe_pane_num" == "null" ]]; then
-    # No vibe pane exists — create one and stop.
-    zellij run -f -x 10% -y 10% --width 80% --height 80% --name vibe -- copilot
+  if [[ -z "$vibe_pane_num" ]]; then
+    # No vibe pane exists for this tab — create one
+    zellij run -f -x 10% -y 10% --width "$VIBE_WIDTH" --height "$VIBE_HEIGHT" --name "$pane_name" -- copilot
     return
   fi
 
+  # Pane exists - add context if provided
   if [[ -n "$file" && -n "$line" ]]; then
-    zellij action write --pane-id "$vibe_pane_num" 21
+    zellij action write --pane-id "$vibe_pane_num" "$KEY_CTRL_U"
     zellij action paste --pane-id "$vibe_pane_num" "@${file}:${line} "
   fi
 
-  # show-floating-panes is idempotent: exits 2 if already visible, not an error.
-  zellij action show-floating-panes || true
-  focus_pane_if_needed "$vibe_pane_num"
+  # Show and focus the pane
+  show_floating_pane "$vibe_pane_num"
 }
 
 ########################################## GIT ##########################################
 
 # Opens LazyGit in a full-screen-ish centered floating pane. The pane closes
-# itself automatically when LazyGit exits.
+# itself automatically when LazyGit exits. Each tab has its own lazygit instance.
 open_lazygit() {
-  [[ -n "${ZELLIJ:-}" ]] || fail "git must be run inside Zellij"
+  require_zellij "git"
 
-  zellij run -f -x 5% -y 5% --width 90% --height 90% -- sh -c 'lazygit && zellij action close-pane'
+  local tab_id
+  tab_id="$(current_tab_id)"
+  local pane_name="lazygit-tab-${tab_id}"
+  
+  # Check if this tab's lazygit pane exists
+  local existing_pane
+  existing_pane="$(find_floating_pane "$pane_name")"
+  
+  if show_floating_pane "$existing_pane"; then
+    # Successfully showed existing pane
+    return
+  fi
+  
+  # Create new floating pane for this tab
+  zellij run -f -x 5% -y 5% --width "$LAZYGIT_WIDTH" --height "$LAZYGIT_HEIGHT" --name "$pane_name" \
+    -- sh -c 'lazygit && zellij action close-pane'
 }
 
 main() {
@@ -301,6 +379,24 @@ main() {
       ;;
     terminal)
       toggle_terminal
+      ;;
+    newtab)
+      shift
+      require_zellij "newtab"
+      
+      local target_dir="${1:-$PWD}"
+      target_dir="$(resolve_cwd "$target_dir")"
+      
+      # Validate directory exists
+      if [[ ! -d "$target_dir" ]]; then
+        fail "Directory does not exist: $target_dir"
+      fi
+      
+      local tab_name
+      tab_name="$(basename "$target_dir")"
+      
+      # Create new tab with helix in target directory
+      zellij action new-tab --name "$tab_name" --cwd "$target_dir"
       ;;
     git)
       shift
@@ -340,16 +436,30 @@ main() {
         done
         origin_pane="$(session_main_pane_id "$session_name")"
         write_to_session_pane "$session_name" "$origin_pane" " hx"
-        #zellij --session "$session_name" run -- hx
-        #toggle_picker "$PWD"
         zellij attach "$session_name"
       else
-        # Try 'hx' first, then fall back to 'helix'
+        # Inside zellij - check if current tab is empty
+        local tab_id
+        tab_id="$(current_tab_id)"
+        
+        # Count non-plugin panes in this tab
+        local pane_count
+        pane_count="$(zellij action list-panes --json --all \
+          | jq --argjson tab_id "$tab_id" \
+              '[.[] | select(.tab_id == $tab_id and .is_plugin == false)] | length')"
+        
+        if [[ "$pane_count" == "0" ]]; then
+          # Empty tab - create helix pane
+          zellij action new-pane --cwd "$PWD"
+          sleep 0.2  # Brief wait for pane creation
+        fi
+        
+        # Launch helix
         export MULTIPLEXER=zellij
         if command -v hx &> /dev/null; then
-          hx
+          exec hx
         elif command -v helix &> /dev/null; then
-          helix
+          exec helix
         else
           fail "helix not found. Please install helix or hx"
         fi

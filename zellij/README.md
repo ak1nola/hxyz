@@ -15,15 +15,55 @@ It provides a convenient file picker directly accessible from within Helix via a
 
 ## Features
 
-- **Quick File Picker**: Toggle a file picker pane with `space + m + f` in Helix
+- **Multi-Repo Sessions**: Work on multiple repositories in one Zellij session, each in its own tab
+- **Per-Tab Layouts**: Each tab has independent picker, editor, terminal, and floating panes
+- **Quick File Picker**: Toggle a file picker pane with `space + m + f` in Helix (per-tab)
+- **Smart Helix Startup**: Running `hxyz` in an empty tab automatically creates and opens Helix
+- **Per-Tab Floating Panes**: LazyGit and Copilot/vibe are scoped to each tab
 - **Seamless Navigation**: Browse files in Yazi and open selections directly in Helix
 - **Session Management**: Auto-creates named Zellij sessions for organization
 - **Configuration Support**: Includes optimized Yazi configuration
 - **Non-Destructive Install**: Safe installation with conflict detection
 
-## Nota Bene
+## Multi-Repo Workflow
 
-The file picker pane toggle is naive. `space m f` simply closes the leftmost zellij panel if there's one open (regardless of what that panel is running) or opens a new left panel with yazi running and pointing to the current working directory
+HXYZ supports working on multiple repositories in a single Zellij session:
+
+- **One Session, Many Repos**: Each tab represents a different repository or project
+- **Independent Layouts**: Each tab can have its own picker, terminal, stacked panes, and floating panes
+- **Tab-Scoped Features**: LazyGit and Vibe/Copilot are per-tab, using the correct repo directory
+- **Easy Tab Creation**: Use `hxyz newtab ~/path/to/repo` or native Zellij commands (`Ctrl-t n`)
+
+### Example Multi-Repo Workflow
+
+```bash
+# Start a session
+hxyz -s work
+
+# Tab 1 (auto-created): Backend repository
+# - Open files with space m f (toggles picker)
+# - Run LazyGit with space m g (tab-specific)
+# - Use Copilot with space m v (tab-specific)
+
+# Create Tab 2 for frontend
+hxyz newtab ~/projects/frontend
+
+# Create Tab 3 for infrastructure  
+hxyz newtab ~/projects/infra
+
+# Each tab maintains independent state:
+# - Picker on/off
+# - Terminal panes
+# - Stacked build/test panes
+# - LazyGit (uses tab's repo)
+# - Vibe/Copilot
+```
+
+## Important Notes
+
+## Important Notes
+
+**Picker Toggle**: `space m f` specifically toggles the Yazi picker panel (named "hxyz-side-panel"). It won't close other panes you've created, allowing you to safely stack terminal/build panes alongside the picker.
 
 ## Requirements
 
@@ -111,9 +151,83 @@ hxyz
 # Start with custom session name
 hxyz -s myproject
 
+# Create a new tab for a different repository
+hxyz newtab ~/projects/frontend
+
+# In an empty Zellij tab, start Helix
+hxyz
+
 # Show usage information
 hxyz --help
 ```
+
+## Working with Tabs and Panes
+
+HXYZ supports a flexible multi-repo workflow with per-tab layouts:
+
+### Per-Tab Layout
+
+Each Zellij tab can have its own independent layout:
+- **Left**: Yazi file picker (toggleable with `space m f`)
+- **Right**: Helix editor (primary pane)
+- **Right (stacked)**: Additional terminal/build panes created manually
+- **Bottom**: Terminal pane (toggleable with `space m t`)
+- **Floating**: Per-tab LazyGit (`space m g`) and Vibe/Copilot (`space m v`)
+
+### Creating Tabs for Different Repos
+
+**Option 1: Using hxyz command**
+```bash
+hxyz newtab ~/projects/backend
+hxyz newtab ~/projects/frontend
+hxyz newtab ~/projects/infrastructure
+```
+
+**Option 2: Using native Zellij**
+1. Press `Ctrl-t` then `n` to create a new tab
+2. Navigate to your repo directory
+3. Run `hxyz` to start Helix in the new tab
+
+### Working with Stacked Panes
+
+Create additional panes for running build tools, tests, or terminals:
+
+**Native Zellij Commands:**
+- `Ctrl-p` then `d` - Create pane below (stacked)
+- `Ctrl-p` then `r` - Create pane to the right
+- `Ctrl-p` then `x` - Close current pane
+- `Ctrl-p` then `h`/`j`/`k`/`l` - Navigate between panes
+- `Ctrl-p` then `+`/`-` - Resize panes
+
+**Example Workflow:**
+1. Edit code in Helix
+2. Press `Ctrl-p` then `d` to create a terminal below
+3. Run `sbt` or `npm run dev` in the terminal
+4. Press `Ctrl-p` then `k` to return to Helix
+5. Both panes coexist with the picker toggle
+
+### Per-Tab Floating Panes
+
+Floating panes are scoped to each tab:
+
+- **LazyGit** (`space m g` in Helix):
+  - Each tab has its own LazyGit instance
+  - Uses the correct repository directory for that tab
+  - Closes automatically when you exit LazyGit
+  
+- **Vibe/Copilot** (`space m v` in Helix):
+  - Each tab has its own Copilot CLI instance
+  - Pass file context: In Helix, position cursor and press `space m v`
+  - Independent per tab for context isolation
+
+### Tab Isolation
+
+All operations are tab-scoped:
+- Toggling the picker in Tab 1 doesn't affect Tab 2
+- Each tab's LazyGit works with that tab's repository
+- Terminal toggles are per-tab
+- Stacked panes are per-tab
+- Floating panes are per-tab
 
 ## How It Works
 
