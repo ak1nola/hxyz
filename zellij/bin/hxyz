@@ -54,37 +54,23 @@ resolve_cwd() {
 current_tab_id() {
   local pane_id="${ZELLIJ_PANE_ID:-}"
   [[ -n "$pane_id" ]] || fail "ZELLIJ_PANE_ID is not set"
-  zellij action list-panes --json | python3 -c '
-import json, sys
-pane_id = int(sys.argv[1])
-for pane in json.load(sys.stdin):
-    if pane.get("id") == pane_id:
-        print(pane["tab_id"])
-        raise SystemExit(0)
-raise SystemExit(1)
-' "$pane_id"
+  zellij action list-panes --json | jq --argjson id "$pane_id" '.[] | select(.id == $id) | .tab_id'
 }
 
 session_main_pane_id() {
   local session_name="$1"
 
-  zellij -s "$session_name" action list-panes --json --all | python3 -c '
-import json
-import sys
+  zellij -s "$session_name" action list-panes --json --all \
+    | jq -r '[.[] | select(.is_plugin | not) | select(.is_floating | not)] | last | "terminal_\(.id)"'
+}
 
-last_pane_id = None
-for pane in json.load(sys.stdin):
-  if pane.get("is_plugin"):
-    continue
-  if pane.get("is_floating"):
-    continue
-  last_pane_id = pane.get("id")
+focus_pane_if_needed() {
+  local pane_id="${1#terminal_}"
+  local focused_id
+  focused_id="$(zellij action list-panes --json --all \
+    | jq -r 'first(.[] | select(.is_focused == true) | .id | tostring) // empty')"
 
-if last_pane_id is None:
-  raise SystemExit(1)
-
-print(f"terminal_{last_pane_id}")
-'
+  [[ "$focused_id" == "$pane_id" ]] || zellij action focus-pane-id "terminal_${pane_id}"
 }
 
 write_to_helix() {
@@ -92,7 +78,7 @@ write_to_helix() {
   shift
   local command_text="$*"
 
-  zellij action focus-pane-id "$pane_id"
+  focus_pane_if_needed "$pane_id"
   zellij action write --pane-id "$pane_id" 27
   zellij action write-chars --pane-id "$pane_id" ":$command_text"
   zellij action write --pane-id "$pane_id" 13
@@ -103,10 +89,14 @@ write_to_session_pane() {
   local pane_id="$2"
   shift 2
   local command_text="$*"
+  local normalized_pane_id="${pane_id#terminal_}"
+  local focused_id
+  focused_id="$(zellij -s "$session_name" action list-panes --json --all \
+    | jq -r 'first(.[] | select(.is_focused == true) | .id | tostring) // empty')"
 
-  zellij action rename-pane "hx"
-
-  zellij -s "$session_name" action focus-pane-id "$pane_id"
+  if [[ "$focused_id" != "$normalized_pane_id" ]]; then
+    zellij -s "$session_name" action focus-pane-id "terminal_${normalized_pane_id}"
+  fi
   zellij -s "$session_name" action write --pane-id "$pane_id" 27
   zellij -s "$session_name" action write-chars --pane-id "$pane_id" "$command_text"
   zellij -s "$session_name" action write --pane-id "$pane_id" 13
@@ -145,31 +135,16 @@ toggle_picker() {
   tab_id="$(current_tab_id)"
 
   # Find the first non-origin pane in this tab (typically the leftmost extra pane)
+  local origin_id="${origin_pane#terminal_}"
   local other_pane_id=""
-  other_pane_id="$(zellij action list-panes --json --all | python3 -c '
-import json, sys
-
-origin_id = int(sys.argv[1].split("_")[1])
-tab_id = int(sys.argv[2])
-
-for pane in json.load(sys.stdin):
-    if pane.get("tab_id") != tab_id:
-        continue
-    if pane.get("id") == origin_id:
-        continue
-    if pane.get("is_plugin"):
-        continue
-    
-    print("terminal_{}".format(pane["id"]))
-    raise SystemExit(0)
-
-raise SystemExit(1)
-' "$origin_pane" "$tab_id" 2>/dev/null || true)"
+  other_pane_id="$(zellij action list-panes --json --all \
+    | jq -r --argjson tab_id "$tab_id" --argjson origin_id "$origin_id" \
+        'first(.[] | select(.tab_id == $tab_id and .id != $origin_id and .is_plugin == false) | "terminal_\(.id)") // empty')"
 
   if [[ -n "$other_pane_id" ]]; then
     # Close the existing pane
     zellij action close-pane --pane-id "$other_pane_id"
-    zellij action focus-pane-id "$origin_pane"
+    focus_pane_if_needed "$origin_pane"
     return
   fi
 
@@ -185,7 +160,7 @@ raise SystemExit(1)
 
   zellij action move-pane --pane-id "$picker_id" left
   resize_picker_width "$picker_id"
-  zellij action focus-pane-id "$picker_id"
+  focus_pane_if_needed "$picker_id"
 }
 
 run_picker() {
@@ -235,31 +210,16 @@ toggle_terminal() {
   tab_id="$(current_tab_id)"
 
   # Find the terminal pane in this tab (look for a pane named "terminal")
+  local origin_id="${origin_pane#terminal_}"
   local terminal_pane_id=""
-  terminal_pane_id="$(zellij action list-panes --json --all | python3 -c '
-import json, sys
-
-origin_id = int(sys.argv[1].split("_")[1])
-tab_id = int(sys.argv[2])
-
-for pane in json.load(sys.stdin):
-    if pane.get("tab_id") != tab_id:
-        continue
-    if pane.get("id") == origin_id:
-        continue
-    if pane.get("is_plugin"):
-        continue
-    if pane.get("title") == "terminal":
-        print("terminal_{}".format(pane["id"]))
-        raise SystemExit(0)
-
-raise SystemExit(1)
-' "$origin_pane" "$tab_id" 2>/dev/null || true)"
+  terminal_pane_id="$(zellij action list-panes --json --all \
+    | jq -r --argjson tab_id "$tab_id" --argjson origin_id "$origin_id" \
+        'first(.[] | select(.tab_id == $tab_id and .id != $origin_id and .is_plugin == false and .title == "terminal") | "terminal_\(.id)") // empty')"
 
   if [[ -n "$terminal_pane_id" ]]; then
     # Close the existing terminal pane
     zellij action close-pane --pane-id "$terminal_pane_id"
-    zellij action focus-pane-id "$origin_pane"
+    focus_pane_if_needed "$origin_pane"
     return
   fi
 
