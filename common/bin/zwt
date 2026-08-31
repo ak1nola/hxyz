@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# zwt - Multiplexer Proxy Script
+# Proxies commands to thxy, whxy, or hxyz based on the MULTIPLEXER environment variable.
+
+fail() {
+  echo "Error: $*" >&2
+  exit 1
+}
+
+# Autodetect if MULTIPLEXER is not set
+if [[ -z "${MULTIPLEXER:-}" ]]; then
+  if [[ -n "${TMUX:-}" ]]; then
+    export MULTIPLEXER="tmux"
+  elif [[ -n "${WEZTERM_PANE:-}" ]]; then
+    export MULTIPLEXER="wezterm"
+  elif [[ -n "${ZELLIJ:-}" ]]; then
+    export MULTIPLEXER="zellij"
+  else
+    fail "No multiplexer detected (TMUX, WEZTERM_PANE, or ZELLIJ must be set)"
+  fi
+fi
+
+case "$MULTIPLEXER" in
+  tmux)
+    exec thxy "$@"
+    ;;
+  wezterm)
+    exec whxy "$@"
+    ;;
+  zellij)
+    exec hxyz "$@"
+    ;;
+  *)
+    fail "Unknown multiplexer: $MULTIPLEXER"
+    ;;
+esac
