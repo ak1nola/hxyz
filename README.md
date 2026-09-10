@@ -1,311 +1,110 @@
-# HXYZ - Helix + Zellij + Yazi Integration
+# HXYZ
 
-A powerful simple picker integration that brings seamless file selection to Helix through Yazi and Zellij terminal multiplexing.
+HXYZ integrates [Helix](https://helix-editor.com), [Yazi](https://yazi.rs), and
+[Zellij](https://zellij.dev) into a keyboard-driven development workflow.
+It provides a file picker, per-tab terminal panes, LazyGit, and Copilot CLI
+floating panes from within Helix.
 
-It is based on [zide](https://github.com/josephschmitt/zide) - but, hopefully, a little more lightweight and simpler.
+## Supported Multiplexers
 
-## What is HXYZ?
+The repository is organized by terminal multiplexer. Zellij is currently the
+supported implementation:
 
-HXYZ is a shell script that integrates three powerful terminal tools:
-- **Helix** - A modern text editor
-- **Zellij** - A terminal multiplexer (like tmux)
-- **Yazi** - A blazing fast file manager
+| Multiplexer | Directory | Command | Documentation |
+| --- | --- | --- | --- |
+| Zellij | [`zellij/`](zellij/) | `hxyz` | [`zellij/README.md`](zellij/README.md) |
 
-It provides a convenient file picker directly accessible from within Helix via a simple keybinding.
-
-## Features
-
-- **Quick File Picker**: Toggle a file picker pane with `space + m + f` in Helix (`hxyz picker`)
-- **Seamless Navigation**: Browse files in Yazi and open selections directly in Helix
-- **Session Management**: Auto-creates named Zellij sessions for organization
-- **Configuration Support**: Includes optimized Yazi configuration
-- **Non-Destructive Install**: Safe installation with conflict detection
-
-## Nota Bene
-
-The file picker command (`hxyz picker`) toggles a pane titled `picker` in the current Zellij tab. If the pane exists it is closed, otherwise a new left-side Yazi pane is created for the current working directory.
+Shared multiplexer-selection tooling is kept in [`common/`](common/). The
+`zwt` command detects the active multiplexer and dispatches to the matching
+implementation when one is available.
 
 ## Requirements
 
-Before installing HXYZ, ensure you have the following installed:
+For the Zellij implementation, install:
 
-- **Zellij** - Terminal multiplexer
-- **Yazi** - File manager
-- **Helix** (or `hx`) - Text editor
-- **Python 3** - For the install script
+- Zellij
+- Yazi
+- Helix (`hx` or `helix`)
+- Python 3
+- `jq`
+- LazyGit (for `hxyz git`)
+- GitHub Copilot CLI (for `hxyz vibe`)
 
 ## Installation
 
-### Using the Install Script
-
-Note: the install script also creates a 'hz' symlink so that after installation you can open zellij + helix with either `hz` or `hxyz`
-
-1. Navigate to the HXYZ directory:
-   ```bash
-   cd ./hxyz
-   ```
-
-2. Run the install script:
-   ```bash
-   python3 install.py
-   ```
-
-   **Options:**
-   - `--dry-run` - Preview what will be installed without making changes
-   - `--verbose` or `-v` - Show detailed progress during installation
-   - `--no-dep-check` - Skip dependency verification
-
-3. The script will:
-   - ✓ Verify all dependencies are installed
-   - ✓ Check for conflicts with existing files
-   - ✓ Copy the hxyz script to `~/.local/bin/hxyz`
-   - ✓ Copy yazi configuration to `~/.config/hxyz/yazi.toml`
-   - ✓ Inject the keybinding into your Helix config
-
-### Manual Installation
-
-If you prefer to install manually:
-
-1. Copy the script:
-   ```bash
-   cp bin/hxyz ~/.local/bin/hxyz
-   chmod +x ~/.local/bin/hxyz
-   ```
-
-2. Copy the yazi configuration:
-   ```bash
-   mkdir -p ~/.config/hxyz
-   cp config/yazi.toml ~/.config/hxyz/yazi.toml
-   ```
-
-3. Add the keybinding to your Helix config (`~/.config/helix/config.toml`):
-   ```toml
-   [keys.normal.space.m]
-   f = ':sh hxyz picker "%{buffer_name}"'
-   g = ':sh hxyz git'
-   ```
-
-## Usage
-
-### Using the Keybinding
-
-While editing in Helix (running within zellij):
-
-1. Press `space` (space leader key)
-2. Press `m` (group key)
-3. Press `f` (file picker key)
-
-This toggles a file picker pane on the left. You can then:
-- Navigate files with arrow keys or `j`/`k`
-- Open files with `Enter`
-- Select multiple files
-- Close the picker with `q` or `ESC`
-
-### Using the Command
-
-You can also run HXYZ directly from the terminal:
+Run the installer from the implementation directory:
 
 ```bash
-# Start HXYZ in current directory
+cd zellij
+python3 install.py
+```
+
+The installer:
+
+- installs `hxyz` and the `hz` shortcut in `~/.local/bin/`
+- installs the shared `zwt` dispatcher
+- installs the HXYZ Yazi configuration in `~/.config/hxyz/`
+- adds the HXYZ keybindings to `~/.config/helix/config.toml`
+- checks for existing files before modifying them
+
+Use `--dry-run` to preview changes, `--verbose` for detailed output, or
+`--no-dep-check` to skip dependency checks:
+
+```bash
+python3 install.py --dry-run
+```
+
+## Keybindings
+
+The installer adds these bindings under `[keys.normal.space.m]`:
+
+| Binding | Action |
+| --- | --- |
+| `space m f` | Toggle the Yazi file picker |
+| `space m g` | Open LazyGit in a floating pane |
+| `space m o` | Open Copilot CLI in a floating pane |
+
+## Quick Start
+
+Start or attach to a Zellij session and open Helix:
+
+```bash
 hxyz
+```
 
-# Start with custom session name
-hxyz -s myproject
+Useful commands:
 
-# Show usage information
+```bash
 hxyz --help
+hxyz newtab ~/path/to/repository
+hxyz terminal
+hxyz git
+hxyz vibe
 ```
 
-## How It Works
+Each Zellij tab can represent a different repository. The picker, terminal,
+LazyGit, and Copilot panes are scoped to the current tab.
 
-### The File Picker Flow
+## Documentation
 
-1. **Toggle Picker**: Press `space m f` in Helix (runs `hxyz picker "%{buffer_name}"`)
-2. **Browse Files**: Use Yazi to navigate the file system
-3. **Select & Open**: Choose files to open in Helix
-4. **Auto-focus**: Helix pane automatically receives focus when you select files
+See [`zellij/README.md`](zellij/README.md) for the complete Zellij guide,
+including configuration, multi-repository workflows, troubleshooting, and
+uninstallation.
 
-### Session Management
+## Repository Layout
 
-HXYZ creates Zellij sessions with auto-generated names or custom names:
-- Default format: `hxyz-{process-id}`
-- Custom name: `hxyz -s myproject` creates a session named exactly `myproject`
-
-This allows multiple independent HXYZ sessions without conflicts.
-
-## Configuration
-
-### Yazi Configuration
-
-The HXYZ installation includes an optimized `yazi.toml` configuration file at:
+```text
+.
+├── common/
+│   └── bin/zwt          # Shared multiplexer dispatcher
+├── zellij/
+│   ├── bin/hxyz         # Zellij implementation
+│   ├── config/          # Yazi configuration
+│   ├── install.py       # Installer
+│   └── README.md        # Detailed Zellij documentation
+└── README.md
 ```
-~/.config/hxyz/yazi.toml
-```
-
-This configuration is tailored for use with HXYZ and Helix integration. You can customize it further if needed.
-
-### Environment Variables
-
-You can customize HXYZ behavior with environment variables:
-
-```bash
-# Set custom Yazi configuration directory
-export HXYZ_HOME=~/.config/custom/yazi
-
-# Disable custom Yazi config (use system default)
-export HXYZ_USE_YAZI_CONFIG=false
-
-# Custom session prefix
-hxyz -s custom-session-name
-```
-
-### Helix Keybindings
-
-If you want to customize the keybindings, edit `~/.config/helix/config.toml`:
-
-```toml
-[keys.normal.space.m]
-f = ':sh hxyz picker "%{buffer_name}"'  # Current binding
-g = ':sh hxyz git'                       # Lazygit popup
-
-# You can also add custom variations:
-# q = ':sh hxyz picker'               # Open without current file context
-# v = ':sh hxyz -s vsplit picker'     # Future: split variation
-```
-
-## Troubleshooting
-
-### "Missing dependencies" error
-
-**Problem**: The install script reports missing Zellij, Yazi, or Helix
-
-**Solution**: Install the missing tools
-```bash
-# Example for Arch Linux
-sudo pacman -S zellij yazi helix
-
-# Or use your package manager
-```
-
-To skip dependency checking (if tools are installed in non-standard locations):
-```bash
-python3 install.py --no-dep-check
-```
-
-### "hxyz already exists" error
-
-**Problem**: HXYZ installation detects an existing hxyz at `~/.local/bin/hxyz`
-
-**Solution**: Either remove the existing file or verify it's the version you want:
-```bash
-rm ~/.local/bin/hxyz
-python3 install.py
-```
-
-### "space m f already exists" error
-
-**Problem**: The keybinding is already present in Helix config
-
-**Solution**: This is expected if you've already installed HXYZ. The install script prevents duplicate keybindings. If you want to reinstall:
-```bash
-# Edit ~/.config/helix/config.toml and remove the hxyz keybinding
-# Then run install again
-python3 install.py
-```
-
-### Files not opening in Helix
-
-**Problem**: Selected files don't appear in Helix after using the picker
-
-**Solution**: 
-- Ensure Helix is the active pane (it should auto-focus after selection)
-- Check that your Helix config is properly loaded
-- Verify the keybinding is correctly installed with `hxyz --help`
-
-## Uninstalling
-
-** Use the uninstall mode in the install script **
-
-```bash
-python3 install.py uninstall
-```
-
-This removes the following (i.e. you can uninstall manually this way):
-- `~/.local/bin/hxyz`
-- `~/.local/bin/hz`
-- `~/.config/hxyz`
-- The HXYZ keys added under `[keys.normal.space.m]` in `~/.config/helix/config.toml`
-
-## Performance Tips
-
-1. **First Run**: The first time you use `hxyz`, Zellij creates the session. This takes 1-2 seconds.
-
-2. **Session Reuse**: Subsequent calls reuse the existing Zellij session for faster startup.
-
-3. **Yazi Preview**: The included yazi.toml enables image previews. Disable if you want faster performance:
-   ```toml
-   [preview]
-   tab_size = 0  # Disable tab size preview
-   ```
-
-## Architecture
-
-### File Structure
-
-```
-~/.local/bin/hxyz              # Executable script
-~/.config/helix/config.toml    # Helix config with keybinding (modified during install)
-~/.config/hxyz/
-├── yazi.toml                  # Yazi configuration
-└── plugins/
-    └── auto-layout.yazi       # Auto-layout plugin for Yazi
-```
-
-### Session Layout
-
-When you run `hxyz picker`, HXYZ creates:
-```
-Zellij Session
-├── Main Pane (Helix)
-└── Left Pane (Yazi file picker)
-```
-
-Files selected in Yazi are automatically opened in the Helix pane.
-
-## Development
-
-### Modifying the Script
-
-The HXYZ scripts are written in bash and use:
-- Zellij CLI for pane management
-- `jq` for JSON parsing
-- Yazi for file browsing
-
-Key script responsibilities:
-- `bin/hxyz` - Main command dispatcher (`picker`, `git`, `vibe`, and internal `loadbuffer`)
-- `bin/hxyz-picker` - Opens/closes the picker pane in the current Zellij tab
-- `bin/hxyz-buffer` - Runs Yazi and handles picker callbacks that open files in Helix
-
-### Contributing
-
-To improve HXYZ:
-1. Edit `bin/hxyz`
-2. Test with `hxyz picker`
-3. Report issues or suggest improvements
 
 ## License
 
 HXYZ is provided as-is. Use at your own risk.
-
-## Credits
-
-HXYZ integrates:
-- **Zellij** - Terminal multiplexer (https://zellij.dev)
-- **Yazi** - File manager (https://yazi.rs)
-- **Helix** - Text editor (https://helix-editor.com)
-
----
-
-**Version**: 1.0  
-**Last Updated**: 2026-05-15  
-**Installed at**: `~/Projects/hxyz`

@@ -191,17 +191,29 @@ toggle_picker() {
   local tab_id
   tab_id="$(current_tab_id)"
 
-  # Find the picker pane (named "hxyz-side-panel") in this tab
-  # Filters: matching tab_id, not a plugin, title is "hxyz-side-panel"
+  # Find the picker pane (named "files") in this tab
+  # Filters: matching tab_id, not a plugin, title is "files"
   local picker_pane_id
   picker_pane_id="$(zellij action list-panes --json --all \
     | jq -r --argjson tab_id "$tab_id" \
-        'first(.[] | select(.tab_id == $tab_id and .is_plugin == false and .title == "hxyz-side-panel") | "terminal_\(.id)") // empty')"
+        'first(.[] | select(.tab_id == $tab_id and .is_plugin == false and .title == "files") | "terminal_\(.id)") // empty')"
 
   if [[ -n "$picker_pane_id" ]]; then
+    # Save current focus state before closing
+    local current_focused
+    current_focused="$(zellij action list-panes --json --all \
+      | jq -r 'first(.[] | select(.is_focused == true) | "terminal_\(.id)") // empty')"
+    
     # Close the existing picker pane
     zellij action close-pane --pane-id "$picker_pane_id"
-    focus_pane_if_needed "$origin_pane"
+    
+    # Restore focus to the previous pane if it wasn't the picker pane
+    if [[ -n "$current_focused" && "$current_focused" != "$picker_pane_id" ]]; then
+      sleep 0.1  # Brief delay for pane closure to complete
+      focus_pane_if_needed "$current_focused" 2>/dev/null || focus_pane_if_needed "$origin_pane"
+    else
+      focus_pane_if_needed "$origin_pane"
+    fi
     return
   fi
 
@@ -217,6 +229,10 @@ toggle_picker() {
 
   zellij action move-pane --pane-id "$picker_id" left
   resize_picker_width "$picker_id"
+  
+  # Rename the pane to 'files' after a brief delay to let yazi start
+  (sleep 0.2 && zellij action rename-pane --pane-id "$picker_id" files) &
+  
   focus_pane_if_needed "$picker_id"
 }
 
@@ -350,7 +366,7 @@ open_lazygit() {
   
   # Create new floating pane for this tab
   zellij run -f -x 5% -y 5% --width "$LAZYGIT_WIDTH" --height "$LAZYGIT_HEIGHT" --name "$pane_name" \
-    -- sh -c 'lazygit && zellij action close-pane'
+    -- sh -c 'lazygit; zellij action close-pane'
 }
 
 main() {
@@ -435,6 +451,9 @@ main() {
           fi
         done
         origin_pane="$(session_main_pane_id "$session_name")"
+        # Rename the pane to 'editor'
+        zellij -s "$session_name" action focus-pane --pane-id "$origin_pane"
+        zellij -s "$session_name" action rename-pane editor
         write_to_session_pane "$session_name" "$origin_pane" " hx"
         zellij attach "$session_name"
       else
@@ -450,12 +469,18 @@ main() {
         
         if [[ "$pane_count" == "0" ]]; then
           # Empty tab - create helix pane
-          zellij action new-pane --cwd "$PWD"
+          zellij action new-pane --cwd "$PWD" --name editor
           sleep 0.2  # Brief wait for pane creation
         fi
         
-        # Launch helix
+        # Launch helix and rename pane to 'editor'
         export MULTIPLEXER=zellij
+        
+        # Rename current pane to 'editor' before launching helix
+        if [[ -n "${ZELLIJ_PANE_ID:-}" ]]; then
+          zellij action rename-pane editor
+        fi
+        
         if command -v hx &> /dev/null; then
           exec hx
         elif command -v helix &> /dev/null; then
