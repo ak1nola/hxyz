@@ -80,12 +80,7 @@ Before installing HXYZ, ensure you have the following installed:
 
 Note: the install script also creates a 'hz' symlink so that after installation you can open zellij + helix with either `hz` or `hxyz`
 
-1. Navigate to the HXYZ directory:
-   ```bash
-   cd ./hxyz
-   ```
-
-2. Run the install script:
+1. Run the install script from the repository root:
    ```bash
    python3 install.py
    ```
@@ -95,7 +90,7 @@ Note: the install script also creates a 'hz' symlink so that after installation 
    - `--verbose` or `-v` - Show detailed progress during installation
    - `--no-dep-check` - Skip dependency verification
 
-3. The script will:
+2. The script will:
    - ✓ Verify all dependencies are installed
    - ✓ Check for conflicts with existing files
    - ✓ Copy the hxyz script to `~/.local/bin/hxyz`
@@ -108,20 +103,20 @@ If you prefer to install manually:
 
 1. Copy the script:
    ```bash
-   cp bin/hxyz ~/.local/bin/hxyz
+   cp hxyz ~/.local/bin/hxyz
    chmod +x ~/.local/bin/hxyz
    ```
 
 2. Copy the yazi configuration:
    ```bash
    mkdir -p ~/.config/hxyz
-   cp config/yazi.toml ~/.config/hxyz/yazi.toml
+   cp yazi.toml ~/.config/hxyz/yazi.toml
    ```
 
 3. Add the keybinding to your Helix config (`~/.config/helix/config.toml`):
    ```toml
    [keys.normal.space.m]
-   f = ':sh hxyz toggle "%{buffer_name}"'
+   f = ':sh hxyz picker "%{buffer_name}"'
    ```
 
 ## Usage
@@ -215,7 +210,7 @@ Floating panes are scoped to each tab:
   - Uses the correct repository directory for that tab
   - Closes automatically when you exit LazyGit
   
-- **Vibe/Copilot** (`space m v` in Helix):
+- **Vibe/Copilot** (`space m o` in Helix):
   - Each tab has its own Copilot CLI instance
   - Pass file context: In Helix, position cursor and press `space m v`
   - Independent per tab for context isolation
@@ -252,7 +247,7 @@ This allows multiple independent HXYZ sessions without conflicts.
 
 The HXYZ installation includes an optimized `yazi.toml` configuration file at:
 ```
-~/.config/xyz/yazi.toml
+~/.config/hxyz/yazi.toml
 ```
 
 This configuration is tailored for use with HXYZ and Helix integration. You can customize it further if needed.
@@ -278,11 +273,10 @@ If you want to customize the keybindings, edit `~/.config/helix/config.toml`:
 
 ```toml
 [keys.normal.space.m]
-f = ':sh hxyz toggle "%{buffer_name}"'  # Current binding
+f = ':sh hxyz picker "%{buffer_name}"'  # Current binding
 
 # You can also add custom variations:
-# q = ':sh hxyz toggle'                # Open without current file context
-# v = ':sh hxyz -s vsplit toggle'     # Future: split variation
+# q = ':sh hxyz picker'                # Open without current file context
 ```
 
 ## Troubleshooting
@@ -343,7 +337,7 @@ HXYZ installation is unintrusive, so uninstalling is simple:
 rm ~/.local/bin/hxyz
 
 # Remove yazi configuration
-rm -rf ~/.config/xyz
+rm -rf ~/.config/hxyz
 
 # Remove the keybinding from ~/.config/helix/config.toml
 # (Edit the file and remove the [keys.normal.space.m] section)
@@ -368,10 +362,8 @@ rm -rf ~/.config/xyz
 ```
 ~/.local/bin/hxyz              # Executable script
 ~/.config/helix/config.toml    # Helix config with keybinding (modified during install)
-~/.config/xyz/
-├── yazi.toml                  # Yazi configuration
-└── plugins/
-    └── auto-layout.yazi       # Auto-layout plugin for Yazi
+~/.config/hxyz/
+└── yazi.toml                  # Yazi configuration
 ```
 
 ### Session Layout
@@ -402,7 +394,7 @@ Key functions:
 ### Contributing
 
 To improve HXYZ:
-1. Edit `bin/hxyz`
+1. Edit `hxyz`
 2. Test with `hxyz toggle`
 3. Report issues or suggest improvements
 

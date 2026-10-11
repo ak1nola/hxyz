@@ -441,21 +441,26 @@ main() {
         local session_name="${session_name_arg:-hxyz-$$}"
         local origin_pane
         export MULTIPLEXER=zellij
-        zellij attach --create-background "$session_name"
-        local waited=0
-        until zellij list-sessions | grep -q "$session_name"; do
-          sleep 0.1
-          waited=$((waited + 1))
-          if (( waited > 50 )); then
-            fail "zellij session $session_name not created in 5 seconds"
-          fi
-        done
-        origin_pane="$(session_main_pane_id "$session_name")"
-        # Rename the pane to 'editor'
-        zellij -s "$session_name" action focus-pane --pane-id "$origin_pane"
-        zellij -s "$session_name" action rename-pane editor
-        write_to_session_pane "$session_name" "$origin_pane" " hx"
-        zellij attach "$session_name"
+        if zellij list-sessions -s -n 2>/dev/null | grep -qx "$session_name"; then
+          # Session already exists (running or exited) - just attach, resurrecting if needed
+          zellij attach "$session_name"
+        else
+          zellij attach --create-background "$session_name"
+          local waited=0
+          until zellij list-sessions | grep -q "$session_name"; do
+            sleep 0.1
+            waited=$((waited + 1))
+            if (( waited > 50 )); then
+              fail "zellij session $session_name not created in 5 seconds"
+            fi
+          done
+          origin_pane="$(session_main_pane_id "$session_name")"
+          # Rename the pane to 'editor'
+          zellij -s "$session_name" action focus-pane-id "$origin_pane"
+          zellij -s "$session_name" action rename-pane editor
+          write_to_session_pane "$session_name" "$origin_pane" " hx"
+          zellij attach "$session_name"
+        fi
       else
         # Inside zellij - check if current tab is empty
         local tab_id
