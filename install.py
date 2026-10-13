@@ -228,22 +228,39 @@ class InstallContext:
             return False
 
     def install_yazi_config(self):
-        """Copy yazi.toml to ~/.config/hxyz/"""
+        """Install or update yazi.toml, asking before replacing a changed config."""
         if not self.yazi_src.exists():
             print_error(f"yazi.toml not found at {self.yazi_src}")
             return False
 
         if self.yazi_dst.exists() or self.yazi_dst.is_symlink():
-            print_warning(f"Keeping existing Yazi config at {self.yazi_dst}")
-            return True
-        
-        self.yazi_dst_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                if self.yazi_src.read_bytes() == self.yazi_dst.read_bytes():
+                    print_success("Yazi config is already up to date")
+                    return True
+            except OSError as e:
+                print_error(f"Failed to compare Yazi config files: {e}")
+                return False
+
+            if self.dry_run:
+                print(f"  Would ask whether to update {self.yazi_dst} from {self.yazi_src}")
+                return True
+
+            update = self.confirm(
+                f"Installed Yazi config differs from {self.yazi_src}. Update {self.yazi_dst}?"
+            )
+            if update is None:
+                return False
+            if not update:
+                print_warning("Keeping the existing Yazi config")
+                return True
         
         if self.dry_run:
             print(f"  Would copy {self.yazi_src} → {self.yazi_dst}")
             return True
-        
+
         try:
+            self.yazi_dst_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(self.yazi_src, self.yazi_dst)
             verbose(f"Copied yazi.toml to {self.yazi_dst}", self.verbose)
             print_success(f"Installed yazi config to ~/.config/hxyz/yazi.toml")
@@ -432,8 +449,10 @@ class InstallContext:
     def show_post_install_info(self):
         """Display post-installation information"""
         print(f"{Colors.BLUE}Quick Reference:{Colors.RESET}")
-        print(f"  Keybinding:  {Colors.YELLOW}space + m + f{Colors.RESET}")
-        print(f"  Action:      Toggle file picker pane in Helix\n")
+        print(f"  Keybinding:  {Colors.YELLOW}m + f{Colors.RESET}")
+        print(f"  Action:      Toggle file picker pane in Helix\n\n")
+        print(f"  Keybinding:  {Colors.YELLOW}m + g{Colors.RESET}")
+        print(f"  Action:      Open lazygit if installed\n\n")
         
         print(f"{Colors.BLUE}Setup Summary:{Colors.RESET}")
         print(f"  ✓ hxyz script → ~/.local/bin/hxyz")
