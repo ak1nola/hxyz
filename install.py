@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 HXYZ Install Script
-Manages installation of hxyz (Helix + Zellij + Yazi integration) with dependency checking
+Manages installation of hxyz (Mitos/Helix + Zellij + Yazi integration) with dependency checking
 and safe configuration injection.
 """
 
@@ -10,7 +10,6 @@ import re
 import sys
 import shutil
 import argparse
-import subprocess
 from pathlib import Path
 
 
@@ -62,41 +61,36 @@ class InstallContext:
         self.yazi_dst_dir = self.home / ".config" / "hxyz"
         self.yazi_dst = self.yazi_dst_dir / "yazi.toml"
 
-        self.helix_config = self.home / ".config" / "helix" / "config.toml"
+        self.editor_name = None
+        self.editor_config = None
         self.keybinding_src = self.script_dir / "keybinding_config.txt"
+
+    def select_editor(self):
+        for executable, name, directory in (
+            ("ms", "Mitos", "mitos"),
+            ("hx", "Helix", "helix"),
+        ):
+            if shutil.which(executable):
+                self.editor_name = name
+                self.editor_config = self.home / ".config" / directory / "config.toml"
+                return True
+        print_error("No editor found. Please install Mitos (ms) or Helix (hx).")
+        return False
 
     def check_dependencies(self):
         """Verify required dependencies are installed"""
+        if not self.select_editor():
+            return False
         if self.no_dep_check:
             verbose("Skipping dependency check", self.verbose)
             return True
         
-        dependencies = ["zellij", "yazi", "helix", "python3"]
+        dependencies = ["zellij", "yazi", "python3", "jq"]
         missing = []
         
         for dep in dependencies:
-            # For helix, check both 'helix' and 'hx'
-            if dep == "helix":
-                hx_check = subprocess.run(
-                    ["which", "hx"],
-                    capture_output=True,
-                    text=True
-                )
-                helix_check = subprocess.run(
-                    ["which", "helix"],
-                    capture_output=True,
-                    text=True
-                )
-                if hx_check.returncode != 0 and helix_check.returncode != 0:
-                    missing.append(dep)
-            else:
-                result = subprocess.run(
-                    ["which", dep],
-                    capture_output=True,
-                    text=True
-                )
-                if result.returncode != 0:
-                    missing.append(dep)
+            if not shutil.which(dep):
+                missing.append(dep)
         
         if missing:
             print_error(f"Missing dependencies: {', '.join(missing)}")
@@ -280,18 +274,18 @@ class InstallContext:
             return False
 
     def update_keybindings(self):
-        """Compare managed Helix bindings and prompt separately for each difference."""
+        """Compare managed editor bindings and prompt separately for each difference."""
         if not self.keybinding_src.exists():
             print_error(f"keybinding_config.txt not found at {self.keybinding_src}")
             return False
         
-        if not self.helix_config.exists():
-            print_error(f"Helix config not found at {self.helix_config}")
+        if not self.editor_config.exists():
+            print_error(f"{self.editor_name} config not found at {self.editor_config}")
             return False
         
         try:
             keybinding_content = self.keybinding_src.read_text()
-            helix_content = self.helix_config.read_text()
+            editor_content = self.editor_config.read_text()
 
             section_match = re.search(r"(?m)^\s*\[([^\]]+)\]\s*(?:#.*)?$", keybinding_content)
             if not section_match:
@@ -317,29 +311,29 @@ class InstallContext:
                 print_error(f"No keybindings found in [{table_name}]")
                 return False
 
-            helix_lines, table_start, table_end, current_bindings = self._table_contents(
-                helix_content, table_name
+            editor_lines, table_start, table_end, current_bindings = self._table_contents(
+                editor_content, table_name
             )
             accepted = []
             for key, (source_value, source_line) in source_bindings.items():
                 current = current_bindings.get(key)
                 if current and current[0] == source_value:
-                    verbose(f"Helix binding {key} is up to date", self.verbose)
+                    verbose(f"{self.editor_name} binding {key} is up to date", self.verbose)
                     continue
 
                 if current:
-                    print_warning(f"Helix binding {key} differs from keybinding_config.txt")
+                    print_warning(f"{self.editor_name} binding {key} differs from keybinding_config.txt")
                     print(f"  Current: {current[0]}")
                 else:
-                    print_warning(f"Helix binding {key} is missing from Helix config")
+                    print_warning(f"{self.editor_name} binding {key} is missing from {self.editor_name} config")
                     print("  Current: <missing>")
                 print(f"  Desired: {source_value}")
 
                 if self.dry_run:
-                    print(f"  Would ask whether to update Helix binding {key}")
+                    print(f"  Would ask whether to update {self.editor_name} binding {key}")
                     continue
 
-                update = self.confirm(f"Update Helix binding {key}?")
+                update = self.confirm(f"Update {self.editor_name} binding {key}?")
                 if update is None:
                     return False
                 if update:
@@ -347,7 +341,7 @@ class InstallContext:
 
             if self.dry_run or not accepted:
                 if not self.dry_run:
-                    print_success("Helix keybindings are up to date or unchanged")
+                    print_success(f"{self.editor_name} keybindings are up to date or unchanged")
                 return True
 
             replacements = {}
@@ -359,11 +353,11 @@ class InstallContext:
                     replacements[line_index] = source_line
 
             for index, line in replacements.items():
-                helix_lines[index] = line
+                editor_lines[index] = line
 
             if additions:
                 if table_start is None:
-                    new_content = helix_content
+                    new_content = editor_content
                     if new_content and not new_content.endswith("\n"):
                         new_content += "\n"
                     if new_content and not new_content.endswith("\n\n"):
@@ -372,21 +366,21 @@ class InstallContext:
                         line if line.endswith("\n") else line + "\n" for line in additions
                     )
                 else:
-                    if table_end > 0 and not helix_lines[table_end - 1].endswith(("\n", "\r")):
-                        helix_lines[table_end - 1] += "\n"
-                    helix_lines[table_end:table_end] = [
+                    if table_end > 0 and not editor_lines[table_end - 1].endswith(("\n", "\r")):
+                        editor_lines[table_end - 1] += "\n"
+                    editor_lines[table_end:table_end] = [
                         line if line.endswith(("\n", "\r")) else line + "\n"
                         for line in additions
                     ]
-                    new_content = "".join(helix_lines)
+                    new_content = "".join(editor_lines)
             else:
-                new_content = "".join(helix_lines)
+                new_content = "".join(editor_lines)
 
-            self.helix_config.write_text(new_content)
-            print_success(f"Updated Helix keybindings in {self.helix_config}")
+            self.editor_config.write_text(new_content)
+            print_success(f"Updated {self.editor_name} keybindings in {self.editor_config}")
             return True
         except OSError as e:
-            print_error(f"Failed to update Helix keybindings: {e}")
+            print_error(f"Failed to update {self.editor_name} keybindings: {e}")
             return False
 
     def run(self):
@@ -432,23 +426,23 @@ class InstallContext:
     def show_post_install_info(self):
         """Display post-installation information"""
         print(f"{Colors.BLUE}Quick Reference:{Colors.RESET}")
-        print(f"  Keybinding:  {Colors.YELLOW}space + m + f{Colors.RESET}")
-        print(f"  Action:      Toggle file picker pane in Helix\n")
+        print(f"  Keybinding:  {Colors.YELLOW}m f{Colors.RESET}")
+        print(f"  Action:      Open/show floating file picker in {self.editor_name}\n")
         
         print(f"{Colors.BLUE}Setup Summary:{Colors.RESET}")
         print(f"  ✓ hxyz script → ~/.local/bin/hxyz")
         print(f"  ✓ hz symlink → ~/.local/bin/hz")
         print(f"  ✓ yazi config → ~/.config/hxyz/yazi.toml")
-        print(f"  ✓ Helix keybinding injected\n")
+        print(f"  ✓ Managed keybindings checked in {self.editor_config}\n")
         
         print(f"{Colors.BLUE}Next Steps:{Colors.RESET}")
         print(f"  1. Start with: {Colors.YELLOW}hxyz{Colors.RESET} or {Colors.YELLOW}hz{Colors.RESET}")
-        print(f"  2. Or use keybinding: {Colors.YELLOW}space + m + f{Colors.RESET} in Helix\n")
+        print(f"  2. Or use keybinding: {Colors.YELLOW}m f{Colors.RESET} in {self.editor_name}\n")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Install HXYZ (Helix + Zellij + Yazi integration)",
+        description="Install HXYZ (Mitos, with Helix fallback, + Zellij + Yazi integration)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -472,7 +466,7 @@ Examples:
     parser.add_argument(
         "--no-dep-check",
         action="store_true",
-        help="Skip dependency verification"
+        help="Skip non-editor dependency verification (ms or hx is still needed)"
     )
     
     args = parser.parse_args()
