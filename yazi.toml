@@ -3,6 +3,7 @@ ratio = [1, 7, 0]
 
 [opener]
 edit = [
-	{ run = '$EDITOR "$@"', block = false, for = "unix" },
+	{ run = "$EDITOR %s",    block = false, for = "linux" },
+	{ run = '$EDITOR "$@"', block = false, for = "macos" },
 	{ run = "%EDITOR% %*",  block = false, for = "windows" },
 ]
